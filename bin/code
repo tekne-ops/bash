@@ -89,12 +89,17 @@ if [[ ! -d "$REPOS_DIR" ]]; then
     exit 1
 fi
 
-# Find subdirs that contain .git (direct children only)
+# Find all subdirs that contain .git (recursive under dir)
 find_repos() {
     local dir="$1"
+    local sub
     for sub in "$dir"/*/; do
         [[ -d "$sub" ]] || continue
-        [[ -d "${sub}.git" ]] && echo "$sub"
+        if [[ -d "${sub}.git" ]]; then
+            echo "$sub"
+        else
+            find_repos "$sub"
+        fi
     done
 }
 
