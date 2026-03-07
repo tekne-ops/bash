@@ -7,8 +7,9 @@ format:
 	shfmt -i 4 -ci -w bin lib scripts
 
 # Check formatting without modifying files (for CI). Fails with exit 1 if any file needs formatting.
+# Normalize shfmt exit code to 1 so CI always sees exit 1 (some shfmt versions return 2).
 format-check:
-	shfmt -i 4 -ci -d bin lib scripts
+	shfmt -i 4 -ci -d bin lib scripts || exit 1
 
 lint:
 	shellcheck bin/* lib/*.sh scripts/*.sh
