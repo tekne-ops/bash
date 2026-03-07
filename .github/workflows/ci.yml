@@ -15,6 +15,6 @@ jobs:
           sudo apt-get install -y shellcheck bats
           curl -sSLo /usr/local/bin/shfmt https://github.com/mvdan/sh/releases/latest/download/shfmt_linux_amd64
           chmod +x /usr/local/bin/shfmt
-      - run: make format
+      - run: make format-check
       - run: make lint
       - run: make test

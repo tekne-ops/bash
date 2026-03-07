@@ -21,7 +21,7 @@ readonly SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
-    cat << EOF
+    cat <<EOF
 Usage: $SCRIPT_NAME [-d DIR] {status|pull|push} [-m "msg"]
 
 Actions:
@@ -31,7 +31,7 @@ Actions:
             -m "msg"  Commit message (default: "Update")
 
 Options:
-  -d DIR    Directory containing git repos (default: /srv/code/tekne)
+  -d DIR    Directory containing git repos (may be repeated). Default: ansible + bash under tekne.
   -h        Show this help
 
 Environment:
@@ -44,22 +44,28 @@ Examples:
   $SCRIPT_NAME pull
   $SCRIPT_NAME push
   $SCRIPT_NAME push -m "Fix haproxy config"
-  $SCRIPT_NAME -d /srv/code/tekne/ansible pull
+  $SCRIPT_NAME -d /path/to/repos pull
+  $SCRIPT_NAME pull                    # default: ansible + bash under tekne
 EOF
     exit 0
 }
 
 # Parse -d and -h
-# Default: workspace root (parent of bash/bin) = /srv/code/tekne
-REPOS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Default: ansible and bash under tekne (parent of bash/bin)
+TEKNE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPOS_DIRS=()
 while getopts "d:h" opt; do
     case "$opt" in
-        d) REPOS_DIR="$OPTARG" ;;
+        d) REPOS_DIRS+=("$OPTARG") ;;
         h) usage ;;
         *) usage ;;
     esac
 done
 shift $((OPTIND - 1))
+# If no -d was given, default to both ansible and bash
+if [[ ${#REPOS_DIRS[@]} -eq 0 ]]; then
+    REPOS_DIRS=("$TEKNE_ROOT/ansible" "$TEKNE_ROOT/bash")
+fi
 
 ACTION="${1:-}"
 shift || true
@@ -77,22 +83,27 @@ if [[ -z "$ACTION" ]]; then
 fi
 
 case "$ACTION" in
-    status|pull|push) ;;
+    status | pull | push) ;;
     *)
         echo "ERROR: Invalid action '$ACTION'. Use status, pull, or push." >&2
         exit 1
         ;;
 esac
 
-if [[ ! -d "$REPOS_DIR" ]]; then
-    echo "ERROR: Directory not found: $REPOS_DIR" >&2
-    exit 1
-fi
+for dir in "${REPOS_DIRS[@]}"; do
+    if [[ ! -d "$dir" ]]; then
+        echo "ERROR: Directory not found: $dir" >&2
+        exit 1
+    fi
+done
 
-# Find all subdirs that contain .git (recursive under dir)
+# Find all dirs that contain .git (given dir if it is a repo, then recursive subdirs)
 find_repos() {
     local dir="$1"
     local sub
+    if [[ -d "${dir}/.git" ]]; then
+        echo "$dir"
+    fi
     for sub in "$dir"/*/; do
         [[ -d "$sub" ]] || continue
         if [[ -d "${sub}.git" ]]; then
@@ -146,15 +157,22 @@ run_with_pat() {
 }
 
 main() {
-    local repos
-    repos=($(find_repos "$REPOS_DIR"))
+    local repos=()
+    local dir r
+    for dir in "${REPOS_DIRS[@]}"; do
+        while IFS= read -r r; do
+            [[ -n "$r" ]] && repos+=("$r")
+        done < <(find_repos "$dir")
+    done
+    # Dedupe by path (in case a repo appears under multiple roots)
+    mapfile -t repos < <(printf '%s\n' "${repos[@]}" | sort -u)
 
     if [[ ${#repos[@]} -eq 0 ]]; then
-        echo "No git repositories found in $REPOS_DIR"
+        echo "No git repositories found in: ${REPOS_DIRS[*]}"
         exit 0
     fi
 
-    echo "Found ${#repos[@]} repo(s) in $REPOS_DIR"
+    echo "Found ${#repos[@]} repo(s) in: ${REPOS_DIRS[*]}"
     echo ""
 
     for repo in "${repos[@]}"; do

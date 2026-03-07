@@ -44,8 +44,8 @@ log() {
     echo "[$timestamp] [$level] $msg" | tee -a "$LOG_FILE"
 }
 
-log_info()  { log "INFO" "$@"; }
-log_warn()  { log "WARN" "$@"; }
+log_info() { log "INFO" "$@"; }
+log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 #######################################
@@ -152,10 +152,10 @@ upstream_greater_than_local() {
     local_ver=$(get_local_version "$pkg")
 
     if [[ -z "$local_ver" ]]; then
-        return 0  # No local version -> build
+        return 0 # No local version -> build
     fi
     if [[ -z "$upstream" ]]; then
-        return 1  # Can't get upstream -> skip
+        return 1 # Can't get upstream -> skip
     fi
 
     cmp=$(vercmp "$upstream" "$local_ver" 2>/dev/null) || true
@@ -285,7 +285,10 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --force) force_build=1 ;;
-            -h|--help) usage; exit 0 ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
             *)
                 log_error "Unknown option: $1"
                 usage

@@ -45,8 +45,8 @@ log() {
     echo "[$timestamp] [$level] $msg" | tee -a "$LOG_FILE"
 }
 
-log_info()  { log "INFO" "$@"; }
-log_warn()  { log "WARN" "$@"; }
+log_info() { log "INFO" "$@"; }
+log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 #######################################
@@ -69,7 +69,7 @@ print_summary() {
     log_info "========== BUILD SUMMARY =========="
     log_info "Successful: ${#SUCCESS_PACKAGES[@]}"
     log_info "Failed: ${#FAILED_PACKAGES[@]}"
-    
+
     if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
         log_warn "Failed packages: ${FAILED_PACKAGES[*]}"
     fi
@@ -94,7 +94,7 @@ validate_package_name() {
 #######################################
 check_network() {
     log_info "Checking network connectivity..."
-    if ! ping -c 1 -W 5 'aur.archlinux.org' > /dev/null 2>&1; then
+    if ! ping -c 1 -W 5 'aur.archlinux.org' >/dev/null 2>&1; then
         log_error "Cannot reach aur.archlinux.org - network down or unreachable"
         exit 1
     fi
@@ -108,7 +108,7 @@ update_mirrors() {
     log_info "Updating mirrorlist..."
     /usr/bin/reflector --country 'United States' --latest 100 --sort rate \
         --protocol https,ftp --age 24 --save /etc/pacman.d/mirrorlist
-    
+
     log_info "Running system update..."
     pacman -Syu --noconfirm
 }
@@ -119,7 +119,7 @@ update_mirrors() {
 del_folder() {
     local pkg="$1"
     validate_package_name "$pkg" || return 1
-    
+
     local target_dir="${REPO_DIR}/${pkg}"
     if [[ -d "$target_dir" ]]; then
         log_info "Removing existing directory: $target_dir"
@@ -129,13 +129,13 @@ del_folder() {
 
 get_source_url() {
     local pkg="$1"
-    
+
     # Handle linux-tkg-alk specially - it uses the linux-tkg repo
     if [[ "$pkg" == "linux-tkg-alk" ]]; then
         echo "https://github.com/Frogging-Family/linux-tkg.git"
         return
     fi
-    
+
     if [[ -n "${FROGGING_PACKAGES[$pkg]:-}" ]]; then
         echo "https://github.com/Frogging-Family/${pkg}.git"
     else
@@ -146,10 +146,10 @@ get_source_url() {
 get_folder() {
     local pkg="$1"
     validate_package_name "$pkg" || return 1
-    
+
     local url
     url=$(get_source_url "$pkg")
-    
+
     log_info "Cloning $pkg from $url"
     sudo -u "$REPO_USER" git clone "$url" "${REPO_DIR}/${pkg}" 2>&1 | tee -a "$LOG_FILE"
 }
@@ -158,9 +158,9 @@ apply_config() {
     local pkg="$1"
     local config_file="${REPO_DIR}/repo-${pkg}.cfg"
     local target_dir="${REPO_DIR}/${pkg}"
-    
+
     case "$pkg" in
-        linux-tkg|linux-tkg-alk|nvidia-all)
+        linux-tkg | linux-tkg-alk | nvidia-all)
             if [[ -f "$config_file" ]]; then
                 log_info "Applying config: $config_file"
                 cp "$config_file" "${target_dir}/customization.cfg"
@@ -189,9 +189,9 @@ build_package() {
     local pkg="$1"
     local build_dir
     build_dir=$(get_build_dir "$pkg")
-    
+
     log_info "Building $pkg in $build_dir"
-    
+
     if ! sudo -u "$REPO_USER" makepkg \
         --needed --noconfirm --syncdeps --cleanbuild \
         --clean --skippgpcheck --force \
@@ -199,7 +199,7 @@ build_package() {
         log_error "Failed to build $pkg"
         return 1
     fi
-    
+
     # Install if it's a build dependency
     for install_pkg in "${INSTALL_AFTER_BUILD[@]}"; do
         if [[ "$pkg" == "$install_pkg" ]]; then
@@ -208,18 +208,18 @@ build_package() {
             break
         fi
     done
-    
+
     return 0
 }
 
 process_package() {
     local pkg="$1"
     log_info "========== Processing: $pkg =========="
-    
+
     del_folder "$pkg" || return 1
     get_folder "$pkg" || return 1
     apply_config "$pkg"
-    
+
     if build_package "$pkg"; then
         SUCCESS_PACKAGES+=("$pkg")
         log_info "Successfully built: $pkg"
@@ -234,24 +234,24 @@ process_package() {
 #######################################
 create_repo() {
     local repo_out="${REPO_DIR}/repo"
-    
+
     log_info "Creating repository database..."
-    
+
     # Ensure repo directory exists
     sudo -u "$REPO_USER" mkdir -p "$repo_out"
-    
+
     # Move all built packages
     find "${REPO_DIR}" -maxdepth 2 -name "*.pkg.tar.zst" -exec mv -f {} "$repo_out/" \; 2>/dev/null || true
     find "${REPO_DIR}" -maxdepth 3 -name "*.pkg.tar.zst" -exec mv -f {} "$repo_out/" \; 2>/dev/null || true
-    
+
     # Remove old database files
     rm -f "${repo_out}/${REPO_NAME}"*
-    
+
     # Create repository database
     sudo -u "$REPO_USER" repo-add -n -v \
         "${repo_out}/${REPO_NAME}.db.tar.gz" \
         "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
-    
+
     log_info "Repository created at: $repo_out"
 }
 
@@ -262,20 +262,20 @@ main() {
     # Create log directory
     mkdir -p "$LOG_DIR"
     sudo -u "$REPO_USER" mkdir -p "${REPO_DIR}/repo"
-    
+
     log_info "Starting package repository build"
     log_info "Repository directory: $REPO_DIR"
     log_info "Packages to build: ${#PACKAGES[@]}"
-    
+
     check_network
     update_mirrors
-    
+
     for pkg in "${PACKAGES[@]}"; do
         process_package "$pkg"
     done
-    
+
     create_repo
-    
+
     log_info "Build process completed"
 }
 

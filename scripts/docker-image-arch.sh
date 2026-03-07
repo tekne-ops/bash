@@ -45,7 +45,7 @@ get_image() {
     sed -i 's|CMD\ \["/usr/bin/bash"\]||g' "$build_dir/archlinux-docker/Dockerfile.template"
     sed -i 's|-f|--network=host -f|g' "$build_dir/archlinux-docker/Makefile"
 
-    cat << 'DOCKER_EOF' >> "$build_dir/archlinux-docker/Dockerfile.template"
+    cat <<'DOCKER_EOF' >>"$build_dir/archlinux-docker/Dockerfile.template"
 RUN pacman -Syu --noconfirm --needed ansible-core ansible-lint ansible python python-pip python-pipx python-passlib \
                                      vim vim-vital vim-tagbar vim-tabular vim-syntastic vim-supertab vim-spell-es \
                                      vim-spell-en vim-nerdtree vim-nerdcommenter vim-indent-object vim-gitgutter \

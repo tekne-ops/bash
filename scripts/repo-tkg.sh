@@ -50,8 +50,8 @@ log() {
     echo "[$timestamp] [$level] $msg" | tee -a "$LOG_FILE"
 }
 
-log_info()  { log "INFO" "$@"; }
-log_warn()  { log "WARN" "$@"; }
+log_info() { log "INFO" "$@"; }
+log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 #######################################
@@ -87,7 +87,7 @@ _get_version_from_pkgfile() {
 
 get_local_version() {
     local pkg="$1"
-    local variant="$2"  # For linux-tkg: aster, themis, yugen, or empty
+    local variant="$2" # For linux-tkg: aster, themis, yugen, or empty
     local dir repo_out f pattern
 
     for dir in "$LOCAL_REPO_DIR" "$OUTPUT_REPO_DIR"; do
@@ -189,18 +189,18 @@ get_upstream_version() {
 
 upstream_greater_than_local() {
     local pkg="$1"
-    local variant="$2"  # For linux-tkg: aster/themis/yugen - only compare against that variant's package
+    local variant="$2" # For linux-tkg: aster/themis/yugen - only compare against that variant's package
     local cfg_file="$3"
     local upstream local_ver cmp
 
-    upstream=$(get_upstream_version "$pkg" "$cfg_file") || return 0  # Can't get -> build
+    upstream=$(get_upstream_version "$pkg" "$cfg_file") || return 0 # Can't get -> build
     local_ver=$(get_local_version "$pkg" "$variant")
 
     if [[ -z "$local_ver" ]]; then
-        return 0  # No local version -> build
+        return 0 # No local version -> build
     fi
     if [[ -z "$upstream" ]]; then
-        return 0  # Can't get upstream -> build
+        return 0 # Can't get upstream -> build
     fi
 
     cmp=$(vercmp "$upstream" "$local_ver" 2>/dev/null) || true
@@ -409,7 +409,10 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --force) force_build=1 ;;
-            -h|--help) usage; exit 0 ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
             *)
                 log_error "Unknown option: $1"
                 usage
