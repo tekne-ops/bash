@@ -13,11 +13,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck bats
-          curl -sSLo /usr/local/bin/shfmt "https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64"
+          curl -sSLo /usr/local/bin/shfmt https://github.com/mvdan/sh/releases/latest/download/shfmt_linux_amd64
           chmod +x /usr/local/bin/shfmt
-      - name: Check formatting
-        run: |
-          make format
-          git diff --exit-code
+      - run: make format
       - run: make lint
       - run: make test

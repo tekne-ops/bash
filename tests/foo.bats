@@ -6,13 +6,13 @@ setup() {
 }
 
 @test "foo prints hello with default name" {
-  run foo
+  run bash "${REPO_ROOT}/bin/foo"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Hello, world!"* ]]
 }
 
 @test "foo supports custom name" {
-  run foo -n David
+  run bash "${REPO_ROOT}/bin/foo" -n David
   [ "$status" -eq 0 ]
   [[ "$output" == *"Hello, David!"* ]]
 }

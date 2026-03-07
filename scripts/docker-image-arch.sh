@@ -37,7 +37,7 @@ EOF
 get_image() {
     local build_dir
     build_dir=$(mktemp -d)
-    trap "sudo rm -rf '$build_dir'" EXIT
+    trap 'sudo rm -rf "$build_dir"' EXIT
 
     git clone https://gitlab.archlinux.org/archlinux/archlinux-docker.git "$build_dir/archlinux-docker"
 

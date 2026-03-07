@@ -7,7 +7,8 @@ set -euo pipefail
 readonly REPO_DIR="${REPO_DIR:-/var/local/repo-tekne}"
 readonly REPO_NAME="themis"
 readonly LOG_DIR="${REPO_DIR}/logs"
-readonly LOG_FILE="${LOG_DIR}/build_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="${LOG_DIR}/build_$(date +%Y%m%d_%H%M%S).log"
+readonly LOG_FILE
 readonly REPO_USER="repo"
 
 declare -a PACKAGES=(
