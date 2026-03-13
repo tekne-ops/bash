@@ -3,8 +3,14 @@ set -euo pipefail
 
 # ------------------------------------------------------------
 # 2x3 tiler for XFCE (xfwm4) on X11
-# Top row: 3x Microsoft Edge
+# Top row: 3x Microsoft Edge (with specific profiles)
 # Bottom row: Thunar | xfce4-terminal | Cursor
+#
+# URLs:
+#   Set EDGE_URL_1 / EDGE_URL_2 / EDGE_URL_3 to open specific pages.
+#   If unset, falls back to EDGE_URL, else to about:blank.
+# Example:
+#   EDGE_URL_1="https://inbox" EDGE_URL_2="https://boards" EDGE_URL_3="https://docs" ./tile_2x3_workspace.sh
 # ------------------------------------------------------------
 
 # --- Sanity checks ---
@@ -31,15 +37,20 @@ pick_first_cmd() {
   return 1
 }
 
-EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
+# Prefer the exact path you specified; fall back if missing.
+EDGE_BIN="/usr/bin/microsoft-edge-stable"
+if [ ! -x "$EDGE_BIN" ]; then
+  EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
+fi
+
 THUNAR_BIN="$(pick_first_cmd thunar || true)"
 TERM_BIN="$(pick_first_cmd xfce4-terminal || true)"
 CURSOR_BIN="$(pick_first_cmd cursor Cursor cursor-bin || true)"
 
-[ -n "$EDGE_BIN" ]   || { echo "ERROR: Microsoft Edge not found (tried microsoft-edge-stable|microsoft-edge|beta|dev)." >&2; exit 1; }
-[ -n "$THUNAR_BIN" ] || { echo "ERROR: Thunar not found." >&2; exit 1; }
-[ -n "$TERM_BIN" ]   || { echo "ERROR: xfce4-terminal not found." >&2; exit 1; }
-if [ -z "$CURSOR_BIN" ]; then
+[ -n "${EDGE_BIN:-}" ]   || { echo "ERROR: Microsoft Edge not found."; exit 1; }
+[ -n "${THUNAR_BIN:-}" ] || { echo "ERROR: Thunar not found."; exit 1; }
+[ -n "${TERM_BIN:-}" ]   || { echo "ERROR: xfce4-terminal not found."; exit 1; }
+if [ -z "${CURSOR_BIN:-}" ]; then
   echo "WARN: Cursor not found (tried: cursor|Cursor|cursor-bin). The right-bottom cell will be empty." >&2
 fi
 
@@ -54,6 +65,7 @@ case "$geom" in
 esac
 read -r MON_W MON_H MON_X MON_Y < <(echo "$geom" | sed -E 's/x/ /; s/\+/ /g')
 
+# Optional gap
 GAP=${GAP:-0}
 CELL_W=$(( (MON_W - 2*GAP) / 3 ))
 CELL_H=$(( (MON_H - GAP) / 2 ))
@@ -78,7 +90,7 @@ new_window_of_class() {
   before="$(get_windows_by_class "$class_pat" | sort || true)"
   ("$@" >/dev/null 2>&1 & disown) || true
 
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 120); do  # up to ~12s
     sleep 0.1
     after="$(get_windows_by_class "$class_pat" | sort || true)"
     new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true)"
@@ -100,7 +112,6 @@ new_window_of_class() {
 }
 
 ensure_window_of_class() {
-  # Return an existing window if present; otherwise launch and return one.
   local class_pat="$1"; shift
   local wid
   wid="$(any_window_of_class "$class_pat" || true)"
@@ -120,23 +131,32 @@ place_window_in_cell() {
   wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
 }
 
-# --- Launch/ensure windows ---
-echo "Launching 3x Microsoft Edge windows..."
-EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
-EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
-EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
+# --- URL resolution ---
+DEFAULT_URL="${EDGE_URL:-about:blank}"
+URL1="${EDGE_URL_1:-$DEFAULT_URL}"
+URL2="${EDGE_URL_2:-$DEFAULT_URL}"
+URL3="${EDGE_URL_3:-$DEFAULT_URL}"
+
+# --- Launch / ensure windows ---
+echo "Launching 3x Microsoft Edge windows (with profiles)..."
+# 1) Default profile (Edge will use 'Default' implicitly); force new window
+EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window "$URL1")"
+
+# 2) Profile 1
+EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Profile 1' "$URL2")"
+
+# 3) Profile 3
+EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Profile 3' "$URL3")"
 
 echo "Ensuring Thunar..."
-# No --new-window; just open $HOME if not present
 THUNAR_WID="$(ensure_window_of_class 'Thunar' "$THUNAR_BIN" "$HOME")"
 
 echo "Ensuring xfce4-terminal..."
 TERM_WID="$(ensure_window_of_class 'xfce4-terminal' "$TERM_BIN")"
 
 CURSOR_WID=""
-if [ -n "$CURSOR_BIN" ]; then
+if [ -n "${CURSOR_BIN:-}" ]; then
   echo "Ensuring Cursor..."
-  # Electron app; class commonly 'cursor.Cursor'
   CURSOR_WID="$(ensure_window_of_class 'cursor' "$CURSOR_BIN" || true)"
   if [ -z "$CURSOR_WID" ]; then
     echo "WARN: Cursor window not found after launch attempt." >&2
