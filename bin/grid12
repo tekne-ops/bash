@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------
+# 1x2 tiler for XFCE (xfwm4) on X11
+# Left:  Microsoft Edge (Default profile)
+# Right: Cursor
+#
+# Optional: set EDGE_URL to open a specific page, else uses about:blank
+# Example:
+#   EDGE_URL="https://inbox.example.com" ./tile_1x2_edge_cursor.sh
+# ------------------------------------------------------------
+
+# --- Sanity checks ---
+for cmd in wmctrl xdotool xrandr; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "ERROR: '$cmd' is required. Install with: sudo pacman -S wmctrl xdotool xorg-xrandr" >&2
+    exit 1
+  }
+done
+
+if [ "${XDG_SESSION_TYPE:-x11}" != "x11" ]; then
+  echo "ERROR: This script requires X11; current session is '${XDG_SESSION_TYPE:-unknown}'." >&2
+  exit 1
+fi
+
+# --- Resolve binaries ---
+pick_first_cmd() {
+  for c in "$@"; do
+    if command -v "$c" >/dev/null 2>&1; then
+      echo "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+EDGE_BIN="/usr/bin/microsoft-edge-stable"
+if [ ! -x "$EDGE_BIN" ]; then
+  EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
+fi
+CURSOR_BIN="$(pick_first_cmd cursor Cursor cursor-bin || true)"
+
+[ -n "${EDGE_BIN:-}" ]   || { echo "ERROR: Microsoft Edge not found."; exit 1; }
+if [ -z "${CURSOR_BIN:-}" ]; then
+  echo "WARN: Cursor not found (tried: cursor|Cursor|cursor-bin). Right column will be empty." >&2
+fi
+
+# --- Monitor geometry (primary) ---
+geom="$(xrandr --query | awk '/ primary/{print $4; exit}')"
+if [ -z "$geom" ]; then
+  geom="$(xrandr --query | awk '/ connected/{print $3; exit}')"
+fi
+case "$geom" in
+  *+*+*) : ;;
+  *) geom="${geom}+0+0" ;;
+esac
+read -r MON_W MON_H MON_X MON_Y < <(echo "$geom" | sed -E 's/x/ /; s/\+/ /g')
+
+# --- Grid (1 row x 2 columns) ---
+ROWS=1
+COLS=2
+GAP=${GAP:-0}  # horizontal gap between the two columns
+
+CELL_W=$(( (MON_W - GAP*(COLS-1)) / COLS ))
+CELL_H=$(( (MON_H - GAP*(ROWS-1)) / ROWS ))
+
+cell_x() { local col="$1"; echo $(( MON_X + col*(CELL_W + GAP) )); }
+cell_y() { local row="$1"; echo $(( MON_Y + row*(CELL_H + GAP) )); }
+
+# --- Window helpers ---
+get_windows_by_class() {
+  local pattern="$1"
+  wmctrl -lx | awk -v pat="$pattern" 'BEGIN{IGNORECASE=1} $3 ~ pat {print $1}'
+}
+
+any_window_of_class() {
+  local pattern="$1"
+  get_windows_by_class "$pattern" | head -n1
+}
+
+new_window_of_class() {
+  local class_pat="$1"; shift
+  local before after new
+  before="$(get_windows_by_class "$class_pat" | sort || true)"
+  ("$@" >/dev/null 2>&1 & disown) || true
+
+  for _ in $(seq 1 120); do  # up to ~12s
+    sleep 0.1
+    after="$(get_windows_by_class "$class_pat" | sort || true)"
+    new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true)"
+    if [ -n "$new" ]; then
+      echo "$new" | head -n1
+      return 0
+    fi
+  done
+
+  after_any="$(get_windows_by_class "$class_pat" | head -n1 || true)"
+  if [ -n "$after_any" ]; then
+    echo "$after_any"
+    return 0
+  fi
+
+  echo "ERROR: Could not find/launch window for pattern '$class_pat' with command: $*" >&2
+  return 1
+}
+
+ensure_window_of_class() {
+  local class_pat="$1"; shift
+  local wid
+  wid="$(any_window_of_class "$class_pat" || true)"
+  if [ -n "$wid" ]; then
+    echo "$wid"
+    return 0
+  fi
+  new_window_of_class "$class_pat" "$@"
+}
+
+place_window_in_cell() {
+  local wid="$1" col="$2" row="$3"
+  local x y
+  x="$(cell_x "$col")"; y="$(cell_y "$row")"
+  wmctrl -ir "$wid" -b remove,maximized_vert,maximized_horz,fullscreen || true
+  wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
+}
+
+# --- URL (optional) ---
+URL="${EDGE_URL:-about:blank}"
+
+# --- Launch / ensure windows ---
+echo "Opening Edge (Default profile) on the left..."
+EDGE_WID="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Default')"
+
+CURSOR_WID=""
+if [ -n "${CURSOR_BIN:-}" ]; then
+  echo "Opening Cursor on the right..."
+  CURSOR_WID="$(ensure_window_of_class 'cursor' "$CURSOR_BIN" || true)"
+  if [ -z "$CURSOR_WID" ]; then
+    echo "WARN: Cursor window not found after launch attempt." >&2
+  fi
+fi
+
+# --- Arrange (1 row x 2 columns) ---
+place_window_in_cell "$EDGE_WID"   0 0  # left
+if [ -n "$CURSOR_WID" ]; then
+  place_window_in_cell "$CURSOR_WID" 1 0  # right
+fi
+
+# Focus Edge at the end
+xdotool windowactivate "$EDGE_WID" >/dev/null 2>&1 || true
+echo "Done. Tiled on ${MON_W}x${MON_H}+${MON_X}+${MON_Y} (1x2)."
+
