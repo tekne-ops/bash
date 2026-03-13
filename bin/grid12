@@ -129,7 +129,7 @@ URL="${EDGE_URL:-about:blank}"
 
 # --- Launch / ensure windows ---
 echo "Opening Edge (Default profile) on the left..."
-EDGE_WID="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Default')"
+EDGE_WID="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Default')"
 
 CURSOR_WID=""
 if [ -n "${CURSOR_BIN:-}" ]; then

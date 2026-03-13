@@ -129,13 +129,13 @@ URL3="${EDGE_URL_3:-$DEFAULT_URL}"
 # --- Launch / ensure windows ---
 echo "Launching 3x Microsoft Edge windows with explicit profiles..."
 # 1) Default profile (explicitly force the Default directory)
-EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Default')"
+EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Default')"
 
 # 2) Profile 1
-EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Profile 1')"
+EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 1')"
 
 # 3) Profile 2 (changed from Profile 3)
-EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window --profile-directory='Profile 2')"
+EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 2')"
 
 echo "Ensuring Thunar..."
 THUNAR_WID="$(ensure_window_of_class 'Thunar' "$THUNAR_BIN" "$HOME")"
