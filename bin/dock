@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------
+# 2x3 tiler for XFCE (xfwm4) on X11
+# Top row: 3x Microsoft Edge
+# Bottom row: Thunar | xfce4-terminal | Cursor
+# ------------------------------------------------------------
+
+# --- Sanity checks ---
+for cmd in wmctrl xdotool xrandr; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "ERROR: '$cmd' is required. Install with: sudo pacman -S wmctrl xdotool xorg-xrandr" >&2
+    exit 1
+  }
+done
+
+# Wayland won't work with wmctrl/xdotool.
+if [ "${XDG_SESSION_TYPE:-x11}" != "x11" ]; then
+  echo "ERROR: This script requires X11; current session is '${XDG_SESSION_TYPE:-unknown}'." >&2
+  exit 1
+fi
+
+# --- Resolve binaries ---
+pick_first_cmd() {
+  for c in "$@"; do
+    if command -v "$c" >/dev/null 2>&1; then
+      echo "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
+THUNAR_BIN="$(pick_first_cmd thunar || true)"
+TERM_BIN="$(pick_first_cmd xfce4-terminal || true)"
+CURSOR_BIN="$(pick_first_cmd cursor Cursor cursor-bin || true)"
+
+[ -n "$EDGE_BIN" ]   || { echo "ERROR: Microsoft Edge not found (tried microsoft-edge-stable|microsoft-edge|beta|dev)." >&2; exit 1; }
+[ -n "$THUNAR_BIN" ] || { echo "ERROR: Thunar not found." >&2; exit 1; }
+[ -n "$TERM_BIN" ]   || { echo "ERROR: xfce4-terminal not found." >&2; exit 1; }
+if [ -z "$CURSOR_BIN" ]; then
+  echo "WARN: Cursor not found (tried: cursor|Cursor|cursor-bin). The right-bottom cell will be empty." >&2
+fi
+
+# --- Monitor geometry (primary) ---
+# Prefer the primary output geometry (e.g., 2560x1440+0+0).
+geom="$(xrandr --query | awk '/ primary/{print $4; exit}')"
+if [ -z "$geom" ]; then
+  # Fall back to the first connected output geometry
+  geom="$(xrandr --query | awk '/ connected/{print $3; exit}')"
+fi
+
+# Ensure geometry has +X+Y; if not, add +0+0
+case "$geom" in
+  *+*+*) : ;;
+  *)
+    geom="${geom}+0+0"
+    ;;
+esac
+
+# Parse WIDTHxHEIGHT+X+Y -> WIDTH HEIGHT X Y
+read -r MON_W MON_H MON_X MON_Y < <(echo "$geom" | sed -E 's/x/ /; s/\+/ /g')
+
+# Optional: margin/gap (in pixels). Set to 0 to perfectly fit cells.
+GAP=${GAP:-0}
+
+CELL_W=$(( (MON_W - 2*GAP) / 3 ))
+CELL_H=$(( (MON_H - GAP) / 2 ))
+
+cell_x() { # col: 0..2
+  local col="$1"
+  echo $(( MON_X + col*CELL_W + (col>0?GAP:0) ))
+}
+cell_y() { # row: 0..1
+  local row="$1"
+  echo $(( MON_Y + row*CELL_H + (row>0?GAP:0) ))
+}
+
+# --- Window helpers ---
+# Return list of window IDs matching wmctrl -lx class column (~ column 3)
+get_windows_by_class() {
+  local pattern="$1"
+  wmctrl -lx | awk -v pat="$pattern" 'BEGIN{IGNORECASE=1} $3 ~ pat {print $1}'
+}
+
+# Launch a command that opens (or raises) a window of a given class pattern,
+# and return the *new* window ID by diffing before/after lists.
+new_window_of_class() {
+  local class_pat="$1"; shift
+  local before after new
+  before="$(get_windows_by_class "$class_pat" | sort || true)"
+  # Launch; many apps reuse an existing process via IPC/DBus, so don't rely on $!
+  ("$@" >/dev/null 2>&1 & disown) || true
+
+  # Wait up to ~10 seconds for a new window to appear.
+  for _ in $(seq 1 100); do
+    sleep 0.1
+    after="$(get_windows_by_class "$class_pat" | sort || true)"
+    # diff: lines in 'after' not in 'before'
+    new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true)"
+    if [ -n "$new" ]; then
+      echo "$new" | head -n1
+      return 0
+    fi
+  done
+
+  # If we didn't detect a new one, try to fall back to "most recently focused" of that class
+  local focused
+  focused="$(xdotool getwindowfocus 2>/dev/null || true)"
+  if [ -n "$focused" ] && wmctrl -lx | awk -v f="$(printf '0x%08x' "$focused")" -v pat="$class_pat" '
+      BEGIN{IGNORECASE=1}
+      tolower($1)==tolower(f) && $3 ~ pat {ok=1}
+      END{exit ok?0:1}' ; then
+    printf '0x%08x\n' "$focused"
+    return 0
+  fi
+
+  echo "ERROR: Could not find/launch window for pattern '$class_pat' with command: $*" >&2
+  return 1
+}
+
+# Unmaximize + move/resize window to cell(col,row)
+place_window_in_cell() {
+  local wid="$1" col="$2" row="$3"
+  local x y
+  x="$(cell_x "$col")"
+  y="$(cell_y "$row")"
+  # Clear maximize/fullscreen, then place
+  wmctrl -ir "$wid" -b remove,maximized_vert,maximized_horz,fullscreen || true
+  wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
+}
+
+# --- Launch windows ---
+echo "Launching 3x Microsoft Edge windows..."
+EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
+EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
+EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --new-window about:blank)"
+
+echo "Launching Thunar..."
+THUNAR_WID="$(new_window_of_class 'Thunar' "$THUNAR_BIN" --new-window)"
+
+echo "Launching xfce4-terminal..."
+TERM_WID="$(new_window_of_class 'xfce4-terminal' "$TERM_BIN")"
+
+CURSOR_WID=""
+if [ -n "$CURSOR_BIN" ]; then
+  echo "Launching Cursor..."
+  # Cursor is an Electron app; class is commonly 'cursor.Cursor'
+  CURSOR_WID="$(new_window_of_class 'cursor' "$CURSOR_BIN" || true)"
+  if [ -z "$CURSOR_WID" ]; then
+    echo "WARN: Cursor window not found after launch attempt." >&2
+  fi
+fi
+
+# --- Arrange (2 rows x 3 cols) ---
+# Top row: Edge | Edge | Edge
+place_window_in_cell "$EDGE_WID_1" 0 0
+place_window_in_cell "$EDGE_WID_2" 1 0
+place_window_in_cell "$EDGE_WID_3" 2 0
+
+# Bottom row: Thunar | Terminal | Cursor
+place_window_in_cell "$THUNAR_WID" 0 1
+place_window_in_cell "$TERM_WID"   1 1
+if [ -n "$CURSOR_WID" ]; then
+  place_window_in_cell "$CURSOR_WID" 2 1
+fi
+
+# Optional: focus top-left Edge at the end
+xdotool windowactivate "$EDGE_WID_1" >/dev/null 2>&1 || true
+
+echo "Done. Tiled on ${MON_W}x${MON_H}+${MON_X}+${MON_Y} (primary)."
