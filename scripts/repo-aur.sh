@@ -25,8 +25,8 @@ declare -a PACKAGES=(
     'proton-ge-custom-bin' 'teams-for-linux-bin' 'sound-theme-smooth' 'bitwarden-bin'
     'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 'flat-remix'
     'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 'libwireplumber-4.0-compat'
-    'heroic-games-launcher' 'crossover' 'deezer' 'wps-office' 'libtiff5' 'cursor-bin'
-    'omnissa-horizon-client' 'lib32-gstreamer'
+    'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 
+    'lib32-gstreamer'
 )
 
 declare -a FAILED_PACKAGES=()
