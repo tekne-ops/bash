@@ -3,7 +3,7 @@ set -e
 
 ISO_SRC="$HOME/Downloads/Win11_25H2_English_x64_v2.iso"
 WORKDIR="$HOME/Downloads/winiso"
-OUTISO="$HOME/Downloads/Win11_Pro_auto.iso"
+OUTISO="$HOME/Downloads/Win11_25H2_x64_v2.iso"
 
 sudo pacman -S --needed --noconfirm xorriso p7zip
 
@@ -14,7 +14,6 @@ mkdir -p "$WORKDIR"
 
 cat > "$WORKDIR/sources/ei.cfg" <<EOF
 [EditionID]
-Professional
 [Channel]
 Retail
 [VL]
