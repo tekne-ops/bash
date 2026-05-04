@@ -26,7 +26,7 @@ declare -a PACKAGES=(
     'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 'flat-remix'
     'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 'libwireplumber-4.0-compat'
     'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 
-    'lib32-gstreamer'
+    'lib32-gstreamer' 'pyhton311'
 )
 
 declare -a FAILED_PACKAGES=()
