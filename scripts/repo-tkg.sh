@@ -149,13 +149,63 @@ get_local_version() {
     echo ""
 }
 
+# Parse pkgver-pkgrel from makepkg --printsrcinfo output. Rejects placeholder pkgver=0.
+_parse_srcinfo_version() {
+    local srcinfo="$1"
+    local pkgver pkgrel
+
+    pkgver=$(grep -E '^\s*pkgver\s*=' <<<"$srcinfo" | head -1 | sed -E 's/^[[:space:]]*pkgver[[:space:]]*=[[:space:]]*//')
+    pkgrel=$(grep -E '^\s*pkgrel\s*=' <<<"$srcinfo" | head -1 | sed -E 's/^[[:space:]]*pkgrel[[:space:]]*=[[:space:]]*//')
+    [[ -n "$pkgver" && "$pkgver" != "0" ]] || return 1
+    if [[ -n "$pkgrel" ]]; then
+        echo "${pkgver}-${pkgrel}"
+    else
+        echo "$pkgver"
+    fi
+}
+
+# wine-tkg-git: pkgver is computed in pkgver() from prepared Wine sources (PKGBUILD has pkgver=0).
+# Fetch sources, run prepare (valve-exp-bleeding checkout, etc.) with _NOCOMPILE, then printsrcinfo.
+get_upstream_version_wine() {
+    local build_dir="$1"
+    local cfg_file="$2"
+    local timeout="${WINE_VERSION_TIMEOUT:-900}"
+    local srcinfo version
+
+    if [[ -n "$cfg_file" && -f "$cfg_file" ]]; then
+        cp "$cfg_file" "${build_dir}/customization.cfg"
+    fi
+    if ! grep -q '^_NOCOMPILE=' "${build_dir}/customization.cfg" 2>/dev/null; then
+        printf '\n# repo-tkg.sh version probe only\n_NOCOMPILE="true"\n' >>"${build_dir}/customization.cfg"
+    fi
+
+    log_info "Resolving wine-tkg-git version (sources + prepare; timeout ${timeout}s)..."
+
+    if ! timeout "$timeout" bash -c "cd '$build_dir' && makepkg --syncdeps --noconfirm --skippgpcheck --force -m" >>"$LOG_FILE" 2>&1; then
+        log_warn "wine-tkg-git version probe failed or timed out"
+        return 1
+    fi
+
+    srcinfo=$(timeout 120 bash -c "cd '$build_dir' && makepkg --noextract --holdver --printsrcinfo -m" 2>/dev/null) || {
+        log_warn "wine-tkg-git: could not read pkgver after prepare"
+        return 1
+    }
+
+    version=$(_parse_srcinfo_version "$srcinfo") || {
+        log_warn "wine-tkg-git: invalid pkgver in SRCINFO after prepare"
+        return 1
+    }
+    log_info "wine-tkg-git resolved upstream version: $version"
+    echo "$version"
+}
+
 # Get upstream version by running makepkg --printsrcinfo in cloned repo (best-effort, may timeout)
 # Requires repo to already be cloned. Returns pkgver-pkgrel from .SRCINFO format.
 get_upstream_version() {
     local pkg="$1"
     local cfg_file="$2"
     local pkg_dir="${BUILD_DIR}/${pkg}"
-    local build_dir
+    local build_dir srcinfo version
 
     [[ -d "$pkg_dir" ]] || return 1
 
@@ -166,25 +216,18 @@ get_upstream_version() {
 
     [[ -f "${build_dir}/PKGBUILD" ]] || return 1
 
-    # Copy config for version check (pkgver() may read customization.cfg)
-    if [[ -n "$cfg_file" && -f "$cfg_file" ]]; then
-        case "$pkg" in
-            wine-tkg-git) cp "$cfg_file" "${build_dir}/customization.cfg" ;;
-            *) cp "$cfg_file" "${pkg_dir}/customization.cfg" ;;
-        esac
+    if [[ "$pkg" == "wine-tkg-git" ]]; then
+        get_upstream_version_wine "$build_dir" "$cfg_file"
+        return $?
     fi
 
-    local srcinfo pkgver pkgrel
-    srcinfo=$(timeout 180 bash -c "cd '$build_dir' && makepkg --printsrcinfo" 2>/dev/null) || return 1
-    pkgver=$(grep -E '^\s*pkgver\s*=' <<<"$srcinfo" | head -1 | sed -E 's/^[[:space:]]*pkgver[[:space:]]*=[[:space:]]*//')
-    pkgrel=$(grep -E '^\s*pkgrel\s*=' <<<"$srcinfo" | head -1 | sed -E 's/^[[:space:]]*pkgrel[[:space:]]*=[[:space:]]*//')
-    if [[ -n "$pkgver" ]]; then
-        if [[ -n "$pkgrel" ]]; then
-            echo "${pkgver}-${pkgrel}"
-        else
-            echo "$pkgver"
-        fi
+    # Copy config for version check (pkgver() may read customization.cfg)
+    if [[ -n "$cfg_file" && -f "$cfg_file" ]]; then
+        cp "$cfg_file" "${pkg_dir}/customization.cfg"
     fi
+
+    srcinfo=$(timeout 180 bash -c "cd '$build_dir' && makepkg --printsrcinfo" 2>/dev/null) || return 1
+    _parse_srcinfo_version "$srcinfo"
 }
 
 upstream_greater_than_local() {
@@ -398,6 +441,7 @@ Environment:
   OUTPUT_REPO_DIR   Where to put built packages (default: /srv/repo/tekne)
   BUILD_DIR         Temporary build directory (default: /tmp/tkg-build-tekne)
   CFG_DIR           Directory containing repo-*.cfg files (default: script directory)
+  WINE_VERSION_TIMEOUT  Seconds for wine-tkg-git source fetch + prepare probe (default: 900)
 
 Requires: vercmp (pacman), git, base-devel
 EOF
