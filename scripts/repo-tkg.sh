@@ -164,8 +164,48 @@ _parse_srcinfo_version() {
     fi
 }
 
-# wine-tkg-git: pkgver is computed in pkgver() from prepared Wine sources (PKGBUILD has pkgver=0).
-# Fetch sources, run prepare (valve-exp-bleeding checkout, etc.) with _NOCOMPILE, then printsrcinfo.
+# Match PKGBUILD logic for _custom_wine_source checkout directory name.
+_wine_srcdir_name() {
+    local url="$1"
+    url=${url//./}
+    url=$(sed 's|.*://.[^/]*/||g' <<<"$url")
+    echo "${url//\//-}"
+}
+
+# valve-exp-bleeding: checkout latest bleeding tag (same as PKGBUILD prepare()) so pkgver() can read it.
+_wine_bleeding_checkout() {
+    local build_dir="$1"
+    local srcdir="${build_dir}/src"
+    local preset winesrc tag commit custom_url
+
+    preset=$(grep -E '^_LOCAL_PRESET=' "${build_dir}/customization.cfg" 2>/dev/null | head -1 | sed -E 's/^[[:space:]]*_LOCAL_PRESET=//' | tr -d "\"'")
+    [[ "$preset" == "valve-exp-bleeding" ]] || return 0
+
+    custom_url=$(grep -E '^_custom_wine_source=' "${build_dir}/customization.cfg" 2>/dev/null | head -1 | sed -E 's/^[[:space:]]*_custom_wine_source=//' | tr -d "\"'")
+    if [[ -z "$custom_url" && -f "${build_dir}/wine-tkg-profiles/wine-tkg-${preset}.cfg" ]]; then
+        custom_url=$(grep -E '^_custom_wine_source=' "${build_dir}/wine-tkg-profiles/wine-tkg-${preset}.cfg" | head -1 | sed -E 's/^[[:space:]]*_custom_wine_source=//' | tr -d "\"'")
+    fi
+    if [[ -n "$custom_url" ]]; then
+        winesrc=$(_wine_srcdir_name "$custom_url")
+    else
+        winesrc=$(find "$srcdir" -mindepth 1 -maxdepth 1 -type d ! -name 'wine-staging*' | head -1)
+        winesrc=${winesrc##*/}
+    fi
+    [[ -n "$winesrc" && -d "${srcdir}/${winesrc}/.git" ]] || return 1
+
+    (
+        cd "${srcdir}/${winesrc}"
+        tag=$(git tag -l --sort=-v:refname | grep -i bleeding | head -n 1)
+        [[ -n "$tag" ]] || exit 1
+        commit=$(git rev-list -n 1 "${tag}")
+        git -c advice.detachedHead=false checkout "${commit}"
+        echo "_bleeding_tag='${tag}'" >>"${build_dir}/temp"
+    )
+}
+
+# wine-tkg-git: pkgver is computed in pkgver() from Wine sources (PKGBUILD has pkgver=0).
+# Use makepkg -o only (not a full build). Any makepkg run triggers exit_cleanup which deletes
+# *.conf from the PKGBUILD dir (30-win32-aliases.conf, etc.) — caller must re-clone before building.
 get_upstream_version_wine() {
     local build_dir="$1"
     local cfg_file="$2"
@@ -175,24 +215,26 @@ get_upstream_version_wine() {
     if [[ -n "$cfg_file" && -f "$cfg_file" ]]; then
         cp "$cfg_file" "${build_dir}/customization.cfg"
     fi
-    if ! grep -q '^_NOCOMPILE=' "${build_dir}/customization.cfg" 2>/dev/null; then
-        printf '\n# repo-tkg.sh version probe only\n_NOCOMPILE="true"\n' >>"${build_dir}/customization.cfg"
+
+    log_info "Resolving wine-tkg-git version (fetch sources only; timeout ${timeout}s)..."
+
+    if ! timeout "$timeout" bash -c "cd '$build_dir' && makepkg -o --syncdeps --noconfirm --skippgpcheck -m" 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "wine-tkg-git: source fetch failed or timed out"
+        return 1
     fi
 
-    log_info "Resolving wine-tkg-git version (sources + prepare; timeout ${timeout}s)..."
-
-    if ! timeout "$timeout" bash -c "cd '$build_dir' && makepkg --syncdeps --noconfirm --skippgpcheck --force -m" >>"$LOG_FILE" 2>&1; then
-        log_warn "wine-tkg-git version probe failed or timed out"
+    if ! _wine_bleeding_checkout "$build_dir"; then
+        log_warn "wine-tkg-git: valve-exp-bleeding checkout failed"
         return 1
     fi
 
     srcinfo=$(timeout 120 bash -c "cd '$build_dir' && makepkg --noextract --holdver --printsrcinfo -m" 2>/dev/null) || {
-        log_warn "wine-tkg-git: could not read pkgver after prepare"
+        log_warn "wine-tkg-git: could not read pkgver after source fetch"
         return 1
     }
 
     version=$(_parse_srcinfo_version "$srcinfo") || {
-        log_warn "wine-tkg-git: invalid pkgver in SRCINFO after prepare"
+        log_warn "wine-tkg-git: invalid pkgver in SRCINFO after source fetch"
         return 1
     }
     log_info "wine-tkg-git resolved upstream version: $version"
@@ -278,8 +320,12 @@ clone_repo() {
     rm -rf "$pkg_dir"
     mkdir -p "$(dirname "$pkg_dir")"
 
-    log_info "Cloning ${pkg} from ${url}"
-    git clone "$url" "$pkg_dir" 2>&1 | tee -a "$LOG_FILE"
+    log_info "Cloning ${pkg} from ${url} (shallow)"
+    if ! git clone --depth 1 "$url" "$pkg_dir" 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "Failed to clone ${pkg}"
+        return 1
+    fi
+    log_info "Clone of ${pkg} finished"
 }
 
 get_build_dir() {
@@ -413,6 +459,12 @@ process_standard_pkg() {
         return 0
     fi
 
+    # makepkg exit_cleanup removes PKGBUILD *.conf sources (30-win32-aliases.conf, etc.)
+    if [[ "$pkg" == "wine-tkg-git" ]]; then
+        log_info "Re-cloning ${pkg} to restore PKGBUILD files removed by version probe"
+        clone_repo "$pkg" || return 1
+    fi
+
     apply_config "$pkg" "$cfg_file" || return 1
 
     if build_package "$pkg"; then
@@ -441,7 +493,7 @@ Environment:
   OUTPUT_REPO_DIR   Where to put built packages (default: /srv/repo/tekne)
   BUILD_DIR         Temporary build directory (default: /tmp/tkg-build-tekne)
   CFG_DIR           Directory containing repo-*.cfg files (default: script directory)
-  WINE_VERSION_TIMEOUT  Seconds for wine-tkg-git source fetch + prepare probe (default: 900)
+  WINE_VERSION_TIMEOUT  Seconds for wine-tkg-git source fetch probe (default: 900)
 
 Requires: vercmp (pacman), git, base-devel
 EOF
