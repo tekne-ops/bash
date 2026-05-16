@@ -226,7 +226,7 @@ get_upstream_version() {
         cp "$cfg_file" "${pkg_dir}/customization.cfg"
     fi
 
-    srcinfo=$(timeout 180 bash -c "cd '$build_dir' && makepkg --printsrcinfo" 2>/dev/null) || return 1
+    srcinfo=$(timeout 180 bash -c "cd '$build_dir' && makepkg --needed --noconfirm --syncdeps --cleanbuild --clean --skippgpcheck --force --printsrcinfo" 2>/dev/null) || return 1
     _parse_srcinfo_version "$srcinfo"
 }
 
