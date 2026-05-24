@@ -54,6 +54,24 @@ log_info() { log "INFO" "$@"; }
 log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 
+refresh_mirrorlist() {
+    log_info "Refreshing mirrorlist"
+    local args=(--country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist)
+    local rc=0
+
+    if [[ $EUID -eq 0 ]]; then
+        /usr/bin/reflector "${args[@]}" 2>&1 | tee -a "$LOG_FILE" || rc=$?
+    elif command -v sudo &>/dev/null; then
+        sudo /usr/bin/reflector "${args[@]}" 2>&1 | tee -a "$LOG_FILE" || rc=$?
+    else
+        rc=1
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+        log_warn "Mirrorlist refresh failed (exit $rc); continuing with existing mirrorlist"
+    fi
+}
+
 #######################################
 # Error handling
 #######################################
@@ -520,8 +538,7 @@ main() {
 
     mkdir -p "$LOG_DIR"
     log_info "Starting TKG build for Tekne repo"
-    log_info "Refreshing mirrorlist"
-    /usr/bin/reflector --country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist
+    refresh_mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"
     log_info "Output repo: $OUTPUT_REPO_DIR"
     log_info "Config directory: $CFG_DIR"
