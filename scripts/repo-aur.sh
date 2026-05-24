@@ -9,8 +9,8 @@ set -euo pipefail
 #######################################
 
 readonly AUR_BASE="https://aur.archlinux.org"
-readonly LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/srv/repotekne}"
-readonly OUTPUT_REPO_DIR="${OUTPUT_REPO_DIR:-/srv/repo/tekne}"
+readonly LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/var/local/repo/tekne}"
+readonly OUTPUT_REPO_DIR="${OUTPUT_REPO_DIR:-/var/local/repo/tekne}"
 readonly REPO_NAME="tekne"
 readonly BUILD_DIR="${BUILD_DIR:-/tmp/aur-build-tekne}"
 readonly REPO_USER="${REPO_USER:-$(id -un)}"
