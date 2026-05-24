@@ -297,8 +297,6 @@ main() {
 
     mkdir -p "$LOG_DIR"
     log_info "Starting AUR build for Tekne repo"
-    log_info "Refreshing mirrorlist"
-    /usr/bin/reflector --country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"
     log_info "Output repo: $OUTPUT_REPO_DIR"
     log_info "Packages: ${#PACKAGES[@]}"
@@ -312,6 +310,9 @@ main() {
         log_error "vercmp is required (pacman). Install: pacman -S pacman"
         exit 1
     fi
+
+    log_info "Refreshing mirrorlist"
+    /usr/bin/reflector --country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist
 
     for pkg in "${PACKAGES[@]}"; do
         if [[ $force_build -eq 1 ]]; then
