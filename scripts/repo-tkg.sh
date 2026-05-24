@@ -12,10 +12,10 @@ set -euo pipefail
 #######################################
 
 readonly GITHUB_BASE="https://github.com/Frogging-Family"
-readonly LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/srv/repo/tekne}"
-readonly OUTPUT_REPO_DIR="${OUTPUT_REPO_DIR:-/srv/repo/tekne}"
+readonly LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-/var/local/repo/tekne}"
+readonly OUTPUT_REPO_DIR="${OUTPUT_REPO_DIR:-/var/local/repo/tekne}"
 readonly REPO_NAME="tekne"
-readonly BUILD_DIR="${BUILD_DIR:-/tmp/tkg-build-tekne}"
+readonly BUILD_DIR="${BUILD_DIR:-/tmp/aur-build-tekne}"
 readonly REPO_USER="${REPO_USER:-$(id -un)}"
 readonly LOG_DIR="${OUTPUT_REPO_DIR}/logs"
 LOG_FILE="${LOG_DIR}/build_$(date +%Y%m%d_%H%M%S).log"
@@ -24,12 +24,10 @@ readonly LOG_FILE
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CFG_DIR="${CFG_DIR:-$SCRIPT_DIR/config}"
 
-# declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
-declare -a PACKAGES=('linux-tkg')
+declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
 
 # linux-tkg: 3 configs -> 3 separate package builds
-# declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-aster.cfg' 'repo-linux-tkg-themis.cfg' 'repo-linux-tkg-yugen.cfg')
-declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-themis.cfg')
+declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-aster.cfg' 'repo-linux-tkg-themis.cfg' 'repo-linux-tkg-yugen.cfg')
 
 # Config file mapping: pkg -> cfg (for nvidia-all, wine-tkg-git)
 declare -A PKG_CONFIG=(
