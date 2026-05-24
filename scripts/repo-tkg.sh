@@ -24,10 +24,12 @@ readonly LOG_FILE
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CFG_DIR="${CFG_DIR:-$SCRIPT_DIR/config}"
 
-declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
+# declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
+declare -a PACKAGES=('linux-tkg')
 
 # linux-tkg: 3 configs -> 3 separate package builds
-declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-aster.cfg' 'repo-linux-tkg-themis.cfg' 'repo-linux-tkg-yugen.cfg')
+# declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-aster.cfg' 'repo-linux-tkg-themis.cfg' 'repo-linux-tkg-yugen.cfg')
+declare -a LINUX_TKG_CONFIGS=('repo-linux-tkg-themis.cfg')
 
 # Config file mapping: pkg -> cfg (for nvidia-all, wine-tkg-git)
 declare -A PKG_CONFIG=(

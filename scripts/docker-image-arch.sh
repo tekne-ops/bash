@@ -6,9 +6,9 @@ set -euo pipefail
 # Not idempotent: remove existing container "arch" before re-running.
 #######################################
 
-CONTAINER_NAME="${CONTAINER_NAME:-arch}"
+CONTAINER_NAME="${CONTAINER_NAME:-repotekne}"
 CONTAINER_IP="${CONTAINER_IP:-172.20.0.13}"
-HOST_MOUNT="${HOST_MOUNT:-/var/www/arch/data}"
+HOST_MOUNT="${HOST_MOUNT:-/srv/dockers/repotekne}"
 DOCKER_NET="${DOCKER_NET:-dockers}"
 TKG_REPO="${TKG_REPO:-https://github.com/fiercebrake/tkg.git}"
 
@@ -69,17 +69,17 @@ run_image() {
 
 post_conf() {
     # sudo docker exec -it "$CONTAINER_NAME" mv /usr/bin/vi /usr/bin/vi-bak
-    sudo docker exec "$CONTAINER_NAME" ln -sf /usr/bin/vim /usr/bin/vi
+    # sudo docker exec "$CONTAINER_NAME" ln -sf /usr/bin/vim /usr/bin/vi
 
-    sudo docker exec "$CONTAINER_NAME" bash -c 'cat > /etc/sudoers.d/repo << EOF
-repo  ALL=(ALL:ALL) ALL
-repo  ALL=(ALL) NOPASSWD: ALL
-EOF'
+    # sudo docker exec "$CONTAINER_NAME" bash -c 'cat > /etc/sudoers.d/repo << EOF
+# repo  ALL=(ALL:ALL) ALL
+# repo  ALL=(ALL) NOPASSWD: ALL
+# EOF'
 
-    sudo docker exec "$CONTAINER_NAME" bash -c "useradd --system -s /usr/bin/nologin repo && usermod -aG wheel repo"
-    sudo docker exec "$CONTAINER_NAME" bash -c "mkdir -p /home/repo && chown repo:repo /home/repo && mkdir -p /srv/code/tekne && mkdir -p /var/local/repo-tekne"
-    sudo docker exec "$CONTAINER_NAME" sed -i 's|/usr/share/nginx/html|/var/local/tekne-repo|g' /etc/nginx/nginx.conf
-    # sudo docker exec "$CONTAINER_NAME" bash -c "git clone $TKG_REPO /mnt/tkg"
+    # sudo docker exec "$CONTAINER_NAME" bash -c "useradd --system -s /usr/bin/nologin repo && usermod -aG wheel repo"
+    # sudo docker exec "$CONTAINER_NAME" bash -c "mkdir -p /home/repo && chown repo:repo /home/repo && mkdir -p /srv/code/tekne && mkdir -p /var/local/repo-tekne"
+    # sudo docker exec "$CONTAINER_NAME" sed -i 's|/usr/share/nginx/html|/var/local/tekne-repo|g' /etc/nginx/nginx.conf
+    sudo docker exec "$CONTAINER_NAME" bash -c "git clone $TKG_REPO /mnt/tkg"
     sudo docker exec "$CONTAINER_NAME" bash -c "chown -R repo:repo /mnt/tkg/ && chown -R repo:repo /srv/code && chown -R repo:repo /var/local/repo-tekne"
     sudo docker exec "$CONTAINER_NAME" bash -c "sudo -u repo git clone https://github.com/tekne-ops/bash /srv/code/tekne/bash"
     sudo docker restart "$CONTAINER_NAME"
@@ -91,10 +91,10 @@ main() {
         exit 0
     fi
 
-    if sudo docker ps -a -q -f "name=^${CONTAINER_NAME}$" | grep -q .; then
-        echo "Container '$CONTAINER_NAME' already exists. Remove it first: docker rm -f $CONTAINER_NAME" >&2
-        exit 1
-    fi
+    # if sudo docker ps -a -q -f "name=^${CONTAINER_NAME}$" | grep -q .; then
+        # echo "Container '$CONTAINER_NAME' already exists. Remove it first: docker rm -f $CONTAINER_NAME" >&2
+        # exit 1
+    # fi
     # get_image
     # run_image
     post_conf
