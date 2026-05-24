@@ -231,7 +231,8 @@ update_repo_db() {
             "${repo_out}/${REPO_NAME}.db.tar.gz" \
             "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
     fi
-ref
+}
+
 #######################################
 # Main
 #######################################
