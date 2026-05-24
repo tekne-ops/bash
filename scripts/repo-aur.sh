@@ -26,7 +26,7 @@ declare -a PACKAGES=(
     'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 'flat-remix'
     'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 'libwireplumber-4.0-compat'
     'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 
-    'lib32-gstreamer' 'python311'
+    'lib32-gstreamer' 'python311' ''
 )
 
 declare -a FAILED_PACKAGES=()
@@ -231,10 +231,7 @@ update_repo_db() {
             "${repo_out}/${REPO_NAME}.db.tar.gz" \
             "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
     fi
-
-    log_info "Repository updated at: $repo_out"
-}
-
+ref
 #######################################
 # Main
 #######################################
@@ -300,6 +297,8 @@ main() {
 
     mkdir -p "$LOG_DIR"
     log_info "Starting AUR build for Tekne repo"
+    log_info "Refreshing mirrorlist"
+    /usr/bin/reflector --country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"
     log_info "Output repo: $OUTPUT_REPO_DIR"
     log_info "Packages: ${#PACKAGES[@]}"
