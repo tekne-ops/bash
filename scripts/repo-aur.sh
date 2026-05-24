@@ -311,9 +311,6 @@ main() {
         exit 1
     fi
 
-    log_info "Refreshing mirrorlist"
-    /usr/bin/reflector --country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist
-
     for pkg in "${PACKAGES[@]}"; do
         if [[ $force_build -eq 1 ]]; then
             log_info "Force build: skipping version check for $pkg"
