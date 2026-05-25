@@ -51,8 +51,8 @@ log_error() { log "ERROR" "$@"; }
 refresh_mirrorlist() {
     log_info "Refreshing mirrorlist"
     log_info "Running system update..."
-    pacman -Syy --noconfirm
-    pacman -Syu --noconfirm
+    sudo pacman -Syy --noconfirm
+    sudo pacman -Syu --noconfirm
     log_info "Updating mirrorlist..."
     local args=(--country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist)
     local rc=0
