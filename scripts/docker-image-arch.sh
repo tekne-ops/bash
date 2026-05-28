@@ -72,9 +72,9 @@ post_conf() {
     # sudo docker exec "$CONTAINER_NAME" ln -sf /usr/bin/vim /usr/bin/vi
 
     # sudo docker exec "$CONTAINER_NAME" bash -c 'cat > /etc/sudoers.d/repo << EOF
-# repo  ALL=(ALL:ALL) ALL
-# repo  ALL=(ALL) NOPASSWD: ALL
-# EOF'
+    # repo  ALL=(ALL:ALL) ALL
+    # repo  ALL=(ALL) NOPASSWD: ALL
+    # EOF'
 
     # sudo docker exec "$CONTAINER_NAME" bash -c "useradd --system -s /usr/bin/nologin repo && usermod -aG wheel repo"
     # sudo docker exec "$CONTAINER_NAME" bash -c "mkdir -p /home/repo && chown repo:repo /home/repo && mkdir -p /srv/code/tekne && mkdir -p /var/local/repo-tekne"
@@ -92,8 +92,8 @@ main() {
     fi
 
     # if sudo docker ps -a -q -f "name=^${CONTAINER_NAME}$" | grep -q .; then
-        # echo "Container '$CONTAINER_NAME' already exists. Remove it first: docker rm -f $CONTAINER_NAME" >&2
-        # exit 1
+    # echo "Container '$CONTAINER_NAME' already exists. Remove it first: docker rm -f $CONTAINER_NAME" >&2
+    # exit 1
     # fi
     # get_image
     # run_image

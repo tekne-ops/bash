@@ -190,7 +190,8 @@ _parse_srcinfo_version() {
 _wine_srcdir_name() {
     local url="$1"
     url=${url//./}
-    url=$(sed 's|.*://.[^/]*/||g' <<<"$url")
+    url="${url#*://}"
+    url="${url#*/}"
     echo "${url//\//-}"
 }
 

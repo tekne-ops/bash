@@ -25,7 +25,7 @@ declare -a PACKAGES=(
     'proton-ge-custom-bin' 'teams-for-linux-bin' 'sound-theme-smooth' 'bitwarden-bin'
     'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 'flat-remix'
     'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 'libwireplumber-4.0-compat'
-    'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 
+    'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client'
     'lib32-gstreamer' 'python311' 'edk2-ovmf-fedora'
 )
 

@@ -9,115 +9,138 @@ set -euo pipefail
 
 # --- Sanity checks ---
 for cmd in wmctrl xdotool xrandr; do
-  command -v "$cmd" >/dev/null 2>&1 || {
-    echo "ERROR: '$cmd' is required. Install with: sudo pacman -S wmctrl xdotool xorg-xrandr" >&2
-    exit 1
-  }
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "ERROR: '$cmd' is required. Install with: sudo pacman -S wmctrl xdotool xorg-xrandr" >&2
+        exit 1
+    }
 done
 
 if [ "${XDG_SESSION_TYPE:-x11}" != "x11" ]; then
-  echo "ERROR: This script requires X11; current session is '${XDG_SESSION_TYPE:-unknown}'." >&2
-  exit 1
+    echo "ERROR: This script requires X11; current session is '${XDG_SESSION_TYPE:-unknown}'." >&2
+    exit 1
 fi
 
 # --- Resolve binaries ---
 pick_first_cmd() {
-  for c in "$@"; do
-    if command -v "$c" >/dev/null 2>&1; then
-      echo "$c"
-      return 0
-    fi
-  done
-  return 1
+    for c in "$@"; do
+        if command -v "$c" >/dev/null 2>&1; then
+            echo "$c"
+            return 0
+        fi
+    done
+    return 1
 }
 
 EDGE_BIN="/usr/bin/microsoft-edge-stable"
 if [ ! -x "$EDGE_BIN" ]; then
-  EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
+    EDGE_BIN="$(pick_first_cmd microsoft-edge-stable microsoft-edge microsoft-edge-beta microsoft-edge-dev || true)"
 fi
 THUNAR_BIN="$(pick_first_cmd thunar || true)"
 TERM_BIN="$(pick_first_cmd xfce4-terminal || true)"
 CURSOR_BIN="$(pick_first_cmd cursor Cursor cursor-bin || true)"
 
-[ -n "${EDGE_BIN:-}" ]   || { echo "ERROR: Microsoft Edge not found."; exit 1; }
-[ -n "${THUNAR_BIN:-}" ] || { echo "ERROR: Thunar not found."; exit 1; }
-[ -n "${TERM_BIN:-}" ]   || { echo "ERROR: xfce4-terminal not found."; exit 1; }
+[ -n "${EDGE_BIN:-}" ] || {
+    echo "ERROR: Microsoft Edge not found."
+    exit 1
+}
+[ -n "${THUNAR_BIN:-}" ] || {
+    echo "ERROR: Thunar not found."
+    exit 1
+}
+[ -n "${TERM_BIN:-}" ] || {
+    echo "ERROR: xfce4-terminal not found."
+    exit 1
+}
 if [ -z "${CURSOR_BIN:-}" ]; then
-  echo "WARN: Cursor not found (tried: cursor|Cursor|cursor-bin). The right-bottom cell will be empty." >&2
+    echo "WARN: Cursor not found (tried: cursor|Cursor|cursor-bin). The right-bottom cell will be empty." >&2
 fi
 
 # --- Monitor geometry (primary) ---
 geom="$(xrandr --query | awk '/ primary/{print $4; exit}')"
 if [ -z "$geom" ]; then
-  geom="$(xrandr --query | awk '/ connected/{print $3; exit}')"
+    geom="$(xrandr --query | awk '/ connected/{print $3; exit}')"
 fi
 case "$geom" in
-  *+*+*) : ;;
-  *) geom="${geom}+0+0" ;;
+    *+*+*) : ;;
+    *) geom="${geom}+0+0" ;;
 esac
 read -r MON_W MON_H MON_X MON_Y < <(echo "$geom" | sed -E 's/x/ /; s/\+/ /g')
 
 GAP=${GAP:-0}
-CELL_W=$(( (MON_W - 2*GAP) / 3 ))
-CELL_H=$(( (MON_H - GAP) / 2 ))
+CELL_W=$(((MON_W - 2 * GAP) / 3))
+CELL_H=$(((MON_H - GAP) / 2))
 
-cell_x() { local col="$1"; echo $(( MON_X + col*CELL_W + (col>0?GAP:0) )); }
-cell_y() { local row="$1"; echo $(( MON_Y + row*CELL_H + (row>0?GAP:0) )); }
+cell_x() {
+    local col="$1"
+    echo $((MON_X + col * CELL_W + (col > 0 ? GAP : 0)))
+}
+cell_y() {
+    local row="$1"
+    echo $((MON_Y + row * CELL_H + (row > 0 ? GAP : 0)))
+}
 
 # --- Window helpers ---
 get_windows_by_class() {
-  local pattern="$1"
-  wmctrl -lx | awk -v pat="$pattern" 'BEGIN{IGNORECASE=1} $3 ~ pat {print $1}'
+    local pattern="$1"
+    wmctrl -lx | awk -v pat="$pattern" 'BEGIN{IGNORECASE=1} $3 ~ pat {print $1}'
 }
 
 any_window_of_class() {
-  local pattern="$1"
-  get_windows_by_class "$pattern" | head -n1
+    local pattern="$1"
+    get_windows_by_class "$pattern" | head -n1
 }
 
 new_window_of_class() {
-  local class_pat="$1"; shift
-  local before after new
-  before="$(get_windows_by_class "$class_pat" | sort || true)"
-  ("$@" >/dev/null 2>&1 & disown) || true
+    local class_pat="$1"
+    shift
+    local before after new
+    before="$(get_windows_by_class "$class_pat" | sort || true)"
+    (
+        "$@" >/dev/null 2>&1 &
+        disown
+    ) || true
 
-  for _ in $(seq 1 120); do  # up to ~12s
-    sleep 0.1
-    after="$(get_windows_by_class "$class_pat" | sort || true)"
-    new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true)"
-    if [ -n "$new" ]; then
-      echo "$new" | head -n1
-      return 0
+    for _ in $( # up to ~12s
+        seq 1 120
+    ); do
+        sleep 0.1
+        after="$(get_windows_by_class "$class_pat" | sort || true)"
+        new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true)"
+        if [ -n "$new" ]; then
+            echo "$new" | head -n1
+            return 0
+        fi
+    done
+
+    after_any="$(get_windows_by_class "$class_pat" | head -n1 || true)"
+    if [ -n "$after_any" ]; then
+        echo "$after_any"
+        return 0
     fi
-  done
 
-  after_any="$(get_windows_by_class "$class_pat" | head -n1 || true)"
-  if [ -n "$after_any" ]; then
-    echo "$after_any"
-    return 0
-  fi
-
-  echo "ERROR: Could not find/launch window for pattern '$class_pat' with command: $*" >&2
-  return 1
+    echo "ERROR: Could not find/launch window for pattern '$class_pat' with command: $*" >&2
+    return 1
 }
 
 ensure_window_of_class() {
-  local class_pat="$1"; shift
-  local wid
-  wid="$(any_window_of_class "$class_pat" || true)"
-  if [ -n "$wid" ]; then
-    echo "$wid"
-    return 0
-  fi
-  new_window_of_class "$class_pat" "$@"
+    local class_pat="$1"
+    shift
+    local wid
+    wid="$(any_window_of_class "$class_pat" || true)"
+    if [ -n "$wid" ]; then
+        echo "$wid"
+        return 0
+    fi
+    new_window_of_class "$class_pat" "$@"
 }
 
 place_window_in_cell() {
-  local wid="$1" col="$2" row="$3"
-  local x y
-  x="$(cell_x "$col")"; y="$(cell_y "$row")"
-  wmctrl -ir "$wid" -b remove,maximized_vert,maximized_horz,fullscreen || true
-  wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
+    local wid="$1" col="$2" row="$3"
+    local x y
+    x="$(cell_x "$col")"
+    y="$(cell_y "$row")"
+    wmctrl -ir "$wid" -b remove,maximized_vert,maximized_horz,fullscreen || true
+    wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
 }
 
 # --- URL resolution (optional) ---
@@ -129,13 +152,13 @@ URL3="${EDGE_URL_3:-$DEFAULT_URL}"
 # --- Launch / ensure windows ---
 echo "Launching 3x Microsoft Edge windows with explicit profiles..."
 # 1) Default profile (explicitly force the Default directory)
-EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Default')"
+EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Default' "$URL1")"
 
 # 2) Profile 1
-EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 1')"
+EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 1' "$URL2")"
 
 # 3) Profile 2 (changed from Profile 3)
-EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 2')"
+EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 2' "$URL3")"
 
 echo "Ensuring Thunar..."
 THUNAR_WID="$(ensure_window_of_class 'Thunar' "$THUNAR_BIN" "$HOME")"
@@ -145,11 +168,11 @@ TERM_WID="$(ensure_window_of_class 'xfce4-terminal' "$TERM_BIN")"
 
 CURSOR_WID=""
 if [ -n "${CURSOR_BIN:-}" ]; then
-  echo "Ensuring Cursor..."
-  CURSOR_WID="$(ensure_window_of_class 'cursor' "$CURSOR_BIN" || true)"
-  if [ -z "$CURSOR_WID" ]; then
-    echo "WARN: Cursor window not found after launch attempt." >&2
-  fi
+    echo "Ensuring Cursor..."
+    CURSOR_WID="$(ensure_window_of_class 'cursor' "$CURSOR_BIN" || true)"
+    if [ -z "$CURSOR_WID" ]; then
+        echo "WARN: Cursor window not found after launch attempt." >&2
+    fi
 fi
 
 # --- Arrange (2 rows x 3 cols) ---
@@ -160,9 +183,9 @@ place_window_in_cell "$EDGE_WID_3" 2 0
 
 # Bottom row: Thunar | Terminal | Cursor
 place_window_in_cell "$THUNAR_WID" 0 1
-place_window_in_cell "$TERM_WID"   1 1
+place_window_in_cell "$TERM_WID" 1 1
 if [ -n "$CURSOR_WID" ]; then
-  place_window_in_cell "$CURSOR_WID" 2 1
+    place_window_in_cell "$CURSOR_WID" 2 1
 fi
 
 xdotool windowactivate "$EDGE_WID_1" >/dev/null 2>&1 || true

@@ -12,7 +12,7 @@ mkdir -p "$WORKDIR"
 
 7z x "$ISO_SRC" -o"$WORKDIR"
 
-cat > "$WORKDIR/sources/ei.cfg" <<EOF
+cat >"$WORKDIR/sources/ei.cfg" <<EOF
 [EditionID]
 [Channel]
 Retail
@@ -21,16 +21,16 @@ Retail
 EOF
 
 xorriso -as mkisofs \
-  -iso-level 3 \
-  -o "$OUTISO" \
-  -full-iso9660-filenames \
-  -volid "WIN11_PRO" \
-  -eltorito-boot boot/etfsboot.com \
-  -eltorito-catalog boot/boot.cat \
-  -no-emul-boot -boot-load-size 8 -boot-info-table \
-  -eltorito-alt-boot \
-  -e efi/microsoft/boot/efisys.bin \
-  -no-emul-boot \
-  "$WORKDIR"
+    -iso-level 3 \
+    -o "$OUTISO" \
+    -full-iso9660-filenames \
+    -volid "WIN11_PRO" \
+    -eltorito-boot boot/etfsboot.com \
+    -eltorito-catalog boot/boot.cat \
+    -no-emul-boot -boot-load-size 8 -boot-info-table \
+    -eltorito-alt-boot \
+    -e efi/microsoft/boot/efisys.bin \
+    -no-emul-boot \
+    "$WORKDIR"
 
 echo "✅ ISO created: $OUTISO"
