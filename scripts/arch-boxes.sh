@@ -24,11 +24,11 @@ CUSTOM_REPO_URL="http://repo.tekne.sv"
 
 # --- Clone arch-boxes if not present, pull if already cloned ---
 if [[ ! -d "$ARCH_BOXES/.git" ]]; then
-  echo "==> Cloning arch-boxes into $ARCH_BOXES..."
-  git clone "$ARCH_BOXES_REPO" "$ARCH_BOXES"
+    echo "==> Cloning arch-boxes into $ARCH_BOXES..."
+    git clone "$ARCH_BOXES_REPO" "$ARCH_BOXES"
 else
-  echo "==> Updating existing arch-boxes checkout..."
-  git -C "$ARCH_BOXES" pull --ff-only
+    echo "==> Updating existing arch-boxes checkout..."
+    git -C "$ARCH_BOXES" pull --ff-only
 fi
 
 sudo pacman -Sy --needed --noconfirm gptfdisk btrfs-progs
@@ -37,10 +37,10 @@ echo "==> Applying tekne customizations to arch-boxes..."
 
 # --- Backup originals (only on first run) ---
 for f in build.sh images/basic.sh; do
-  if [[ ! -f "$ARCH_BOXES/$f.orig" ]]; then
-    cp "$ARCH_BOXES/$f" "$ARCH_BOXES/$f.orig"
-    echo "  Backed up $f -> $f.orig"
-  fi
+    if [[ ! -f "$ARCH_BOXES/$f.orig" ]]; then
+        cp "$ARCH_BOXES/$f" "$ARCH_BOXES/$f.orig"
+        echo "  Backed up $f -> $f.orig"
+    fi
 done
 
 # --- Patch build.sh ---
@@ -111,7 +111,7 @@ BEGIN { tekne_found = 0; multilib_found = 0 }
 }
 
 { print }
-' "$ARCH_BOXES/build.sh" > "$ARCH_BOXES/build.sh.tmp"
+' "$ARCH_BOXES/build.sh" >"$ARCH_BOXES/build.sh.tmp"
 mv "$ARCH_BOXES/build.sh.tmp" "$ARCH_BOXES/build.sh"
 chmod +x "$ARCH_BOXES/build.sh"
 
@@ -121,7 +121,7 @@ sed -i "s/cat <<EOF >pacman.conf/cat <<'EOF' >pacman.conf/" "$ARCH_BOXES/build.s
 # --- Rewrite images/basic.sh ---
 echo "  Writing images/basic.sh (users, sudoers, SSH keys)..."
 
-cat > "$ARCH_BOXES/images/basic.sh" << 'BASICEOF'
+cat >"$ARCH_BOXES/images/basic.sh" <<'BASICEOF'
 #!/bin/bash
 # shellcheck disable=SC2034,SC2154
 IMAGE_NAME="Arch-Linux-x86_64-basic-${build_version}.qcow2"
