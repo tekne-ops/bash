@@ -55,7 +55,6 @@ users:
     sudo: ALL=(ALL:ALL) NOPASSWD:ALL
     groups: sudo
     shell: /bin/bash
-    system: true
 
 ssh_pwauth: false
 
@@ -97,7 +96,7 @@ EOF
 
     sudo virt-install \
         --name "${VM}" \
-        --memory 4096 \
+        --memory 2048 \
         --vcpus 2 \
         --cpu host-passthrough \
         --machine q35 \
@@ -117,7 +116,7 @@ EOF
 delete_vm() {
     VM=$1
     sudo virsh destroy "$VM" &>/dev/null || true
-    sudo virsh undefine "$VM" --remove-all-storage || true
+    sudo virsh undefine "$VM" --remove-all-storage --nvram || true
 }
 
 case "$1" in
