@@ -242,17 +242,34 @@ update_repo_db() {
         mkdir -p "$repo_out"
     fi
 
-    # repo-add: -n = only add new packages, don't remove old; -v = verbose
-    # Use -n to add new packages to existing db, or remove old db first for full refresh
-    if [[ -f "${repo_out}/${REPO_NAME}.db.tar.gz" ]]; then
-        sudo -u "$REPO_USER" repo-add -n -v \
-            "${repo_out}/${REPO_NAME}.db.tar.gz" \
-            "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE" || true
-    else
-        sudo -u "$REPO_USER" repo-add -v \
-            "${repo_out}/${REPO_NAME}.db.tar.gz" \
-            "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
-    fi
+    # IMPORTANT:
+    # Do NOT use repo-add -n here. Some AUR packages can be rebuilt/re-downloaded
+    # with the same pkgver-pkgrel filename but different contents; -n would keep
+    # the old DB entry (old checksums) and pacman will fail with "corrupted package".
+    #
+    # Rebuild the db atomically: write to a temp filename, then move into place.
+    local db_tmp="${repo_out}/${REPO_NAME}.db.tar.gz.tmp"
+    local files_tmp="${repo_out}/${REPO_NAME}.files.tar.gz.tmp"
+
+    rm -f -- \
+        "$db_tmp" "$files_tmp" \
+        "${repo_out}/${REPO_NAME}.db.tar.gz" "${repo_out}/${REPO_NAME}.files.tar.gz" \
+        "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
+
+    # shellcheck disable=SC2068
+    sudo -u "$REPO_USER" repo-add -v \
+        "$db_tmp" \
+        "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
+
+    # repo-add writes both .db.tar.gz and the matching .files.tar.gz
+    [[ -f "$files_tmp" ]] || files_tmp="${db_tmp/.db.tar.gz.tmp/.files.tar.gz.tmp}"
+
+    mv -f -- "$db_tmp" "${repo_out}/${REPO_NAME}.db.tar.gz"
+    mv -f -- "$files_tmp" "${repo_out}/${REPO_NAME}.files.tar.gz"
+
+    # Maintain the conventional symlinks pacman expects
+    ln -sf -- "${REPO_NAME}.db.tar.gz" "${repo_out}/${REPO_NAME}.db"
+    ln -sf -- "${REPO_NAME}.files.tar.gz" "${repo_out}/${REPO_NAME}.files"
 }
 
 #######################################
