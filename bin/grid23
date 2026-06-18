@@ -56,15 +56,34 @@ if [ -z "${CURSOR_BIN:-}" ]; then
 fi
 
 # --- Monitor geometry (primary) ---
-geom="$(xrandr --query | awk '/ primary/{print $4; exit}')"
+# Match WxH(+X+Y) in the line; avoid field-splitting that can capture "(normal" from "(normal left)".
+geom="$(xrandr --query | awk '
+    / connected/ {
+        primary = ($0 ~ / primary/)
+        if (match($0, /[0-9]+x[0-9]+(\+[0-9]+)?(\+[0-9]+)?/)) {
+            g = substr($0, RSTART, RLENGTH)
+            if (primary) { print g; exit }
+            if (!fb) fb = g
+        }
+    }
+    END { if (fb) print fb }
+')"
 if [ -z "$geom" ]; then
-    geom="$(xrandr --query | awk '/ connected/{print $3; exit}')"
+    echo "ERROR: Could not determine monitor geometry from xrandr output." >&2
+    xrandr --query >&2
+    exit 1
 fi
 case "$geom" in
     *+*+*) : ;;
     *) geom="${geom}+0+0" ;;
 esac
 read -r MON_W MON_H MON_X MON_Y < <(echo "$geom" | sed -E 's/x/ /; s/\+/ /g')
+MON_X=${MON_X:-0}
+MON_Y=${MON_Y:-0}
+if ! [[ "$MON_W" =~ ^[0-9]+$ && "$MON_H" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Invalid monitor geometry parsed: '$geom'" >&2
+    exit 1
+fi
 
 GAP=${GAP:-0}
 CELL_W=$(((MON_W - 2 * GAP) / 3))
