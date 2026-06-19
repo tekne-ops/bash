@@ -51,8 +51,12 @@ log_error() { log "ERROR" "$@"; }
 refresh_mirrorlist() {
     log_info "Refreshing mirrorlist"
     log_info "Running system update..."
-    sudo pacman -Syy --noconfirm
-    sudo pacman -Syu --noconfirm
+    if ! sudo pacman -Syy --noconfirm 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "pacman -Syy failed (tekne repo may be unavailable); continuing build"
+    fi
+    if ! sudo pacman -Syu --noconfirm 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "pacman -Syu failed; continuing build"
+    fi
     log_info "Updating mirrorlist..."
     local args=(--country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist)
     local rc=0
@@ -235,11 +239,26 @@ move_packages_to_repo() {
 #######################################
 update_repo_db() {
     local repo_out="${OUTPUT_REPO_DIR}"
+    local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
+    local files_final="${repo_out}/${REPO_NAME}.files.tar.gz"
+    local db_tmp="${repo_out}/${REPO_NAME}.db.tar.gz.new"
+    local files_tmp="${repo_out}/${REPO_NAME}.files.tar.gz.new"
+    local -a pkgs=()
 
     log_info "Updating repository database: ${REPO_NAME}.db"
+    mkdir -p "$repo_out"
 
-    if [[ ! -d "$repo_out" ]]; then
-        mkdir -p "$repo_out"
+    shopt -s nullglob
+    pkgs=("${repo_out}"/*.pkg.tar.zst)
+    shopt -u nullglob
+
+    if [[ ${#pkgs[@]} -eq 0 ]]; then
+        if [[ -f "$db_final" ]]; then
+            log_warn "No packages in $repo_out; keeping existing ${REPO_NAME}.db"
+            return 0
+        fi
+        log_error "No packages in $repo_out; cannot create ${REPO_NAME}.db"
+        return 1
     fi
 
     # IMPORTANT:
@@ -248,28 +267,29 @@ update_repo_db() {
     # the old DB entry (old checksums) and pacman will fail with "corrupted package".
     #
     # Rebuild the db atomically: write to a temp filename, then move into place.
-    local db_tmp="${repo_out}/${REPO_NAME}.db.tar.gz.tmp"
-    local files_tmp="${repo_out}/${REPO_NAME}.files.tar.gz.tmp"
+    # Never delete the live db until the new one is ready.
+    rm -f -- "$db_tmp" "$files_tmp"
 
-    rm -f -- \
-        "$db_tmp" "$files_tmp" \
-        "${repo_out}/${REPO_NAME}.db.tar.gz" "${repo_out}/${REPO_NAME}.files.tar.gz" \
-        "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
+    if ! sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "repo-add failed; existing ${REPO_NAME}.db left unchanged"
+        rm -f -- "$db_tmp" "$files_tmp"
+        return 1
+    fi
 
-    # shellcheck disable=SC2068
-    sudo -u "$REPO_USER" repo-add -v \
-        "$db_tmp" \
-        "${repo_out}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
+    [[ -f "$files_tmp" ]] || files_tmp="${db_tmp/.db.tar.gz.new/.files.tar.gz.new}"
+    if [[ ! -f "$db_tmp" || ! -f "$files_tmp" ]]; then
+        log_error "repo-add did not produce database files"
+        rm -f -- "$db_tmp" "$files_tmp"
+        return 1
+    fi
 
-    # repo-add writes both .db.tar.gz and the matching .files.tar.gz
-    [[ -f "$files_tmp" ]] || files_tmp="${db_tmp/.db.tar.gz.tmp/.files.tar.gz.tmp}"
+    mv -f -- "$db_tmp" "$db_final"
+    mv -f -- "$files_tmp" "$files_final"
 
-    mv -f -- "$db_tmp" "${repo_out}/${REPO_NAME}.db.tar.gz"
-    mv -f -- "$files_tmp" "${repo_out}/${REPO_NAME}.files.tar.gz"
-
-    # Maintain the conventional symlinks pacman expects
-    ln -sf -- "${REPO_NAME}.db.tar.gz" "${repo_out}/${REPO_NAME}.db"
-    ln -sf -- "${REPO_NAME}.files.tar.gz" "${repo_out}/${REPO_NAME}.files"
+    # Hardlink aliases for HTTP clients (nginx often rejects symlinks for tekne.db).
+    rm -f -- "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
+    ln -f -- "$db_final" "${repo_out}/${REPO_NAME}.db"
+    ln -f -- "$files_final" "${repo_out}/${REPO_NAME}.files"
 }
 
 #######################################
@@ -308,8 +328,8 @@ Options:
   -h, --help    Show this help.
 
 Environment:
-  LOCAL_REPO_DIR    Where to read existing package versions (default: /srv/repotekne)
-  OUTPUT_REPO_DIR   Where to put built packages (default: /srv/repo/tekne)
+  LOCAL_REPO_DIR    Where to read existing package versions (default: /var/local/repo/tekne)
+  OUTPUT_REPO_DIR   Where to put built packages (default: /var/local/repo/tekne)
   BUILD_DIR         Temporary build directory (default: /tmp/aur-build-tekne)
 
 Requires: jq, vercmp (pacman), git, base-devel

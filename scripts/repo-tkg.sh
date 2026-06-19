@@ -57,8 +57,12 @@ log_error() { log "ERROR" "$@"; }
 refresh_mirrorlist() {
     log_info "Refreshing mirrorlist"
     log_info "Running system update..."
-    sudo pacman -Syy --noconfirm
-    sudo pacman -Syu --noconfirm
+    if ! sudo pacman -Syy --noconfirm 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "pacman -Syy failed (tekne repo may be unavailable); continuing build"
+    fi
+    if ! sudo pacman -Syu --noconfirm 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "pacman -Syu failed; continuing build"
+    fi
     log_info "Updating mirrorlist..."
     local args=(--country 'United States' --latest 100 --sort rate --protocol 'https,ftp' --age 168 --save /etc/pacman.d/mirrorlist)
     local rc=0
@@ -417,15 +421,36 @@ update_repo_db() {
         mkdir -p "$OUTPUT_REPO_DIR"
     fi
 
-    if [[ -f "${OUTPUT_REPO_DIR}/${REPO_NAME}.db.tar.gz" ]]; then
+    local db_final="${OUTPUT_REPO_DIR}/${REPO_NAME}.db.tar.gz"
+    local files_final="${OUTPUT_REPO_DIR}/${REPO_NAME}.files.tar.gz"
+    local -a pkgs=()
+
+    shopt -s nullglob
+    pkgs=("${OUTPUT_REPO_DIR}"/*.pkg.tar.zst)
+    shopt -u nullglob
+
+    if [[ ${#pkgs[@]} -eq 0 ]]; then
+        if [[ -f "$db_final" ]]; then
+            log_warn "No packages in $OUTPUT_REPO_DIR; keeping existing ${REPO_NAME}.db"
+            return 0
+        fi
+        log_error "No packages in $OUTPUT_REPO_DIR; cannot create ${REPO_NAME}.db"
+        return 1
+    fi
+
+    if [[ -f "$db_final" ]]; then
         sudo -u "$REPO_USER" repo-add -n -v \
-            "${OUTPUT_REPO_DIR}/${REPO_NAME}.db.tar.gz" \
-            "${OUTPUT_REPO_DIR}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE" || true
+            "$db_final" \
+            "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE" || true
     else
         sudo -u "$REPO_USER" repo-add -v \
-            "${OUTPUT_REPO_DIR}/${REPO_NAME}.db.tar.gz" \
-            "${OUTPUT_REPO_DIR}"/*.pkg.tar.zst 2>&1 | tee -a "$LOG_FILE"
+            "$db_final" \
+            "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"
     fi
+
+    rm -f -- "${OUTPUT_REPO_DIR}/${REPO_NAME}.db" "${OUTPUT_REPO_DIR}/${REPO_NAME}.files"
+    ln -f -- "$db_final" "${OUTPUT_REPO_DIR}/${REPO_NAME}.db"
+    ln -f -- "$files_final" "${OUTPUT_REPO_DIR}/${REPO_NAME}.files"
 
     log_info "Repository updated at: $OUTPUT_REPO_DIR"
 }

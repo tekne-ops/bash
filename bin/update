@@ -1,4 +1,25 @@
 #!/bin/bash
+set -euo pipefail
 
-sudo pacman -Syu --needed && pikaur -Syu --needed
+pacman_update() {
+    sudo pacman -Syu --needed "$@"
+}
+
+if ! pacman_update; then
+    if grep -q '^\[tekne\]' /etc/pacman.conf 2>/dev/null; then
+        echo "WARN: pacman failed (tekne repo may be unavailable); updating official repos only." >&2
+        tmpconf=$(mktemp)
+        trap 'rm -f "$tmpconf"' EXIT
+        awk '
+            /^\[tekne\]/ { skip=1; next }
+            /^\[/ { skip=0 }
+            !skip { print }
+        ' /etc/pacman.conf >"$tmpconf"
+        pacman_update --config "$tmpconf"
+    else
+        exit 1
+    fi
+fi
+
+pikaur -Syu --needed
 sudo fwupdmgr refresh --force && sudo fwupdmgr get-updates && sudo fwupdmgr update
