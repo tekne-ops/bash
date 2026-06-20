@@ -19,7 +19,7 @@ LOG_FILE="${LOG_DIR}/build_$(date +%Y%m%d_%H%M%S).log"
 readonly LOG_FILE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=repo-build-lock.sh
+# shellcheck source=SCRIPTDIR/repo-build-lock.sh
 source "${SCRIPT_DIR}/repo-build-lock.sh"
 
 declare -a PACKAGES=(

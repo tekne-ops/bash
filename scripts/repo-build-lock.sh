@@ -10,7 +10,7 @@ acquire_repo_build_lock() {
 
     if ! flock -n 200; then
         local holder=""
-        holder=$(<"$lock_file" 2>/dev/null || true)
+        holder=$(cat "$lock_file" 2>/dev/null || true)
         if [[ -n "$holder" ]]; then
             log_error "Another repo build is already running: $holder (lock: $lock_file)"
         else

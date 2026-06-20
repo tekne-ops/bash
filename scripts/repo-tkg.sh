@@ -23,7 +23,7 @@ readonly LOG_FILE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CFG_DIR="${CFG_DIR:-$SCRIPT_DIR/config}"
-# shellcheck source=repo-build-lock.sh
+# shellcheck source=SCRIPTDIR/repo-build-lock.sh
 source "${SCRIPT_DIR}/repo-build-lock.sh"
 
 declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
