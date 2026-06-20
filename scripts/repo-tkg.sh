@@ -23,6 +23,8 @@ readonly LOG_FILE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CFG_DIR="${CFG_DIR:-$SCRIPT_DIR/config}"
+# shellcheck source=repo-build-lock.sh
+source "${SCRIPT_DIR}/repo-build-lock.sh"
 
 declare -a PACKAGES=('linux-tkg' 'nvidia-all' 'wine-tkg-git')
 
@@ -537,11 +539,12 @@ Options:
   -h, --help    Show this help.
 
 Environment:
-  LOCAL_REPO_DIR    Where to read existing package versions (default: /srv/repo/tekne)
-  OUTPUT_REPO_DIR   Where to put built packages (default: /srv/repo/tekne)
-  BUILD_DIR         Temporary build directory (default: /tmp/tkg-build-tekne)
-  CFG_DIR           Directory containing repo-*.cfg files (default: script directory)
+  LOCAL_REPO_DIR        Where to read existing package versions (default: /srv/repo/tekne)
+  OUTPUT_REPO_DIR       Where to put built packages (default: /srv/repo/tekne)
+  BUILD_DIR             Temporary build directory (default: /tmp/tkg-build-tekne)
+  CFG_DIR               Directory containing repo-*.cfg files (default: script directory)
   WINE_VERSION_TIMEOUT  Seconds for wine-tkg-git source fetch probe (default: 900)
+  REPO_BUILD_LOCK_FILE  Shared lock file for repo-aur.sh / repo-tkg.sh (default: \${OUTPUT_REPO_DIR}/.repo-build.lock)
 
 Requires: vercmp (pacman), git, base-devel
 EOF
@@ -567,6 +570,7 @@ main() {
     done
 
     mkdir -p "$LOG_DIR"
+    acquire_repo_build_lock "$(basename "$0")"
     log_info "Starting TKG build for Tekne repo"
     refresh_mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"

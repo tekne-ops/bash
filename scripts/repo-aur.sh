@@ -18,6 +18,10 @@ readonly LOG_DIR="${OUTPUT_REPO_DIR}/logs"
 LOG_FILE="${LOG_DIR}/build_$(date +%Y%m%d_%H%M%S).log"
 readonly LOG_FILE
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=repo-build-lock.sh
+source "${SCRIPT_DIR}/repo-build-lock.sh"
+
 declare -a PACKAGES=(
     'onedrive-abraunegg' 'google-chrome' 'microsoft-edge-stable-bin' 'blesh-git'
     'ocs-url' 'aic94xx-firmware' 'ast-firmware' 'wd719x-firmware' 'upd72020x-fw'
@@ -328,9 +332,10 @@ Options:
   -h, --help    Show this help.
 
 Environment:
-  LOCAL_REPO_DIR    Where to read existing package versions (default: /var/local/repo/tekne)
-  OUTPUT_REPO_DIR   Where to put built packages (default: /var/local/repo/tekne)
-  BUILD_DIR         Temporary build directory (default: /tmp/aur-build-tekne)
+  LOCAL_REPO_DIR        Where to read existing package versions (default: /var/local/repo/tekne)
+  OUTPUT_REPO_DIR       Where to put built packages (default: /var/local/repo/tekne)
+  BUILD_DIR             Temporary build directory (default: /tmp/aur-build-tekne)
+  REPO_BUILD_LOCK_FILE  Shared lock file for repo-aur.sh / repo-tkg.sh (default: \${OUTPUT_REPO_DIR}/.repo-build.lock)
 
 Requires: jq, vercmp (pacman), git, base-devel
 EOF
@@ -356,6 +361,7 @@ main() {
     done
 
     mkdir -p "$LOG_DIR"
+    acquire_repo_build_lock "$(basename "$0")"
     log_info "Starting AUR build for Tekne repo"
     refresh_mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"
