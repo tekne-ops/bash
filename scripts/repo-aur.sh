@@ -22,6 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=SCRIPTDIR/repo-build-lock.sh
 source "${SCRIPT_DIR}/repo-build-lock.sh"
 
+# 'heroic-games-launcher'
 declare -a PACKAGES=(
     'onedrive-abraunegg' 'google-chrome' 'microsoft-edge-stable-bin' 'blesh-git'
     'ocs-url' 'aic94xx-firmware' 'ast-firmware' 'wd719x-firmware' 'upd72020x-fw'
@@ -29,8 +30,8 @@ declare -a PACKAGES=(
     'proton-ge-custom-bin' 'teams-for-linux-bin' 'sound-theme-smooth' 'bitwarden-bin'
     'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 'flat-remix'
     'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 'libwireplumber-4.0-compat'
-    'heroic-games-launcher' 'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client'
-    'lib32-gstreamer' 'python311' 'edk2-ovmf-fedora'
+    'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 'lib32-gstreamer' 
+    'python311' 'edk2-ovmf-fedora'
 )
 
 declare -a FAILED_PACKAGES=()
