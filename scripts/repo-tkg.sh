@@ -417,44 +417,60 @@ move_packages_to_repo() {
 # Repository management
 #######################################
 update_repo_db() {
-    log_info "Updating repository database: ${REPO_NAME}.db"
-
-    if [[ ! -d "$OUTPUT_REPO_DIR" ]]; then
-        mkdir -p "$OUTPUT_REPO_DIR"
-    fi
-
-    local db_final="${OUTPUT_REPO_DIR}/${REPO_NAME}.db.tar.gz"
-    local files_final="${OUTPUT_REPO_DIR}/${REPO_NAME}.files.tar.gz"
+    local repo_out="${OUTPUT_REPO_DIR}"
+    local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
+    local files_final="${repo_out}/${REPO_NAME}.files.tar.gz"
+    local db_tmp="${repo_out}/${REPO_NAME}.db.tar.gz.new"
+    local files_tmp="${repo_out}/${REPO_NAME}.files.tar.gz.new"
     local -a pkgs=()
 
+    log_info "Updating repository database: ${REPO_NAME}.db"
+    mkdir -p "$repo_out"
+
     shopt -s nullglob
-    pkgs=("${OUTPUT_REPO_DIR}"/*.pkg.tar.zst)
+    pkgs=("${repo_out}"/*.pkg.tar.zst)
     shopt -u nullglob
 
     if [[ ${#pkgs[@]} -eq 0 ]]; then
         if [[ -f "$db_final" ]]; then
-            log_warn "No packages in $OUTPUT_REPO_DIR; keeping existing ${REPO_NAME}.db"
+            log_warn "No packages in $repo_out; keeping existing ${REPO_NAME}.db"
             return 0
         fi
-        log_error "No packages in $OUTPUT_REPO_DIR; cannot create ${REPO_NAME}.db"
+        log_error "No packages in $repo_out; cannot create ${REPO_NAME}.db"
         return 1
     fi
 
-    if [[ -f "$db_final" ]]; then
-        sudo -u "$REPO_USER" repo-add -n -v \
-            "$db_final" \
-            "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE" || true
-    else
-        sudo -u "$REPO_USER" repo-add -v \
-            "$db_final" \
-            "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"
+    # IMPORTANT:
+    # Do NOT use repo-add -n here. Some packages can be rebuilt/re-downloaded
+    # with the same pkgver-pkgrel filename but different contents; -n would keep
+    # the old DB entry (old checksums) and pacman will fail with "corrupted package".
+    #
+    # Rebuild the db atomically: write to a temp filename, then move into place.
+    # Never delete the live db until the new one is ready.
+    rm -f -- "$db_tmp" "$files_tmp"
+
+    if ! sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "repo-add failed; existing ${REPO_NAME}.db left unchanged"
+        rm -f -- "$db_tmp" "$files_tmp"
+        return 1
     fi
 
-    rm -f -- "${OUTPUT_REPO_DIR}/${REPO_NAME}.db" "${OUTPUT_REPO_DIR}/${REPO_NAME}.files"
-    ln -f -- "$db_final" "${OUTPUT_REPO_DIR}/${REPO_NAME}.db"
-    ln -f -- "$files_final" "${OUTPUT_REPO_DIR}/${REPO_NAME}.files"
+    [[ -f "$files_tmp" ]] || files_tmp="${db_tmp/.db.tar.gz.new/.files.tar.gz.new}"
+    if [[ ! -f "$db_tmp" || ! -f "$files_tmp" ]]; then
+        log_error "repo-add did not produce database files"
+        rm -f -- "$db_tmp" "$files_tmp"
+        return 1
+    fi
 
-    log_info "Repository updated at: $OUTPUT_REPO_DIR"
+    mv -f -- "$db_tmp" "$db_final"
+    mv -f -- "$files_tmp" "$files_final"
+
+    # Hardlink aliases for HTTP clients (nginx often rejects symlinks for tekne.db).
+    rm -f -- "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
+    ln -f -- "$db_final" "${repo_out}/${REPO_NAME}.db"
+    ln -f -- "$files_final" "${repo_out}/${REPO_NAME}.files"
+
+    log_info "Repository updated at: $repo_out"
 }
 
 #######################################
