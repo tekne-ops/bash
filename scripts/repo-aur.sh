@@ -143,36 +143,47 @@ _get_version_from_pkgfile() {
     pacman -Qp "$f" 2>/dev/null | awk '{print $2}'
 }
 
+_consider_local_version() {
+    local best_ver="$1"
+    local candidate="$2"
+    local cmp
+
+    [[ -n "$candidate" ]] || return 0
+    if [[ -z "$best_ver" ]]; then
+        echo "$candidate"
+        return 0
+    fi
+    cmp=$(vercmp "$candidate" "$best_ver" 2>/dev/null) || return 0
+    if [[ "$cmp" -gt 0 ]]; then
+        echo "$candidate"
+    else
+        echo "$best_ver"
+    fi
+}
+
 get_local_version() {
     local pkg="$1"
     local dir="${LOCAL_REPO_DIR}"
-    local f
+    local search_dir f ver best_ver=""
 
-    # Check for packages in LOCAL_REPO_DIR (could be repo/ subdir or flat)
-    for search_dir in "$dir" "${dir}/repo"; do
+    # Check for packages in LOCAL_REPO_DIR (could be repo/ subdir or flat).
+    # Use the highest version found; glob order is lexical (3.8.22 before 3.9.8).
+    for search_dir in "$dir" "${dir}/repo" "$OUTPUT_REPO_DIR"; do
         [[ -d "$search_dir" ]] || continue
         for f in "${search_dir}/${pkg}"-*.pkg.tar.zst; do
             [[ -e "$f" ]] || continue
-            _get_version_from_pkgfile "$f"
-            return 0
+            ver=$(_get_version_from_pkgfile "$f") || continue
+            best_ver=$(_consider_local_version "$best_ver" "$ver")
         done
-        # Some packages have different pkgbase (e.g. google-chrome -> google-chrome)
         for f in "${search_dir}"/*"${pkg}"*.pkg.tar.zst; do
             [[ -e "$f" ]] || continue
             [[ "$f" == *"/${pkg}-"* ]] || [[ "$f" == *"/${pkg}"* ]] || continue
-            _get_version_from_pkgfile "$f"
-            return 0
+            ver=$(_get_version_from_pkgfile "$f") || continue
+            best_ver=$(_consider_local_version "$best_ver" "$ver")
         done
     done
 
-    # Also check OUTPUT_REPO_DIR in case we're doing incremental runs
-    for f in "${OUTPUT_REPO_DIR}/${pkg}"-*.pkg.tar.zst; do
-        [[ -e "$f" ]] || continue
-        _get_version_from_pkgfile "$f"
-        return 0
-    done
-
-    echo ""
+    echo "$best_ver"
 }
 
 upstream_greater_than_local() {
@@ -236,6 +247,8 @@ move_packages_to_repo() {
     local repo_out="${OUTPUT_REPO_DIR}"
 
     mkdir -p "$repo_out"
+    # Drop older builds of the same package so repo-add and pacman see one version.
+    find "$repo_out" -maxdepth 1 -name "${pkg}-*.pkg.tar.zst" -delete
     find "$pkg_dir" -maxdepth 1 -name "*.pkg.tar.zst" -exec mv -f {} "$repo_out/" \; 2>/dev/null || true
 }
 
@@ -295,6 +308,8 @@ update_repo_db() {
     rm -f -- "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
     ln -f -- "$db_final" "${repo_out}/${REPO_NAME}.db"
     ln -f -- "$files_final" "${repo_out}/${REPO_NAME}.files"
+
+    log_info "Repository database rebuilt with ${#pkgs[@]} package file(s)"
 }
 
 #######################################
