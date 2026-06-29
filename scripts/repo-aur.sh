@@ -255,6 +255,153 @@ move_packages_to_repo() {
 #######################################
 # Repository management
 #######################################
+_parse_desc_version() {
+    local desc="$1"
+    awk '$0 == "%VERSION%" { getline; print; exit }' <<<"$desc"
+}
+
+_parse_desc_name() {
+    local desc="$1"
+    awk '$0 == "%NAME%" { getline; print; exit }' <<<"$desc"
+}
+
+_get_db_package_version() {
+    local pkgname="$1"
+    local db_file="$2"
+    local entry desc name ver best_ver=""
+
+    [[ -f "$db_file" ]] || return 1
+
+    # Repo db v2: <pkgbase-ver-rel-arch>/desc per package
+    while IFS= read -r entry; do
+        desc=$(tar -xOf "$db_file" "${entry}/desc" 2>/dev/null) || continue
+        name=$(_parse_desc_name "$desc")
+        [[ "$name" == "$pkgname" ]] || continue
+        ver=$(_parse_desc_version "$desc")
+        [[ -n "$ver" ]] || continue
+        best_ver=$(_consider_local_version "$best_ver" "$ver")
+    done < <(tar -tzf "$db_file" 2>/dev/null | awk -F/ 'NF == 2 && $2 == "desc" { print $1 }')
+
+    if [[ -n "$best_ver" ]]; then
+        echo "$best_ver"
+        return 0
+    fi
+
+    # Repo db v1 fallback: single desc file at archive root
+    desc=$(tar -xOf "$db_file" desc 2>/dev/null) || return 1
+    name=""
+    ver=""
+    while IFS= read -r line; do
+        case "$line" in
+            '%NAME%')
+                read -r name
+                ;;
+            '%VERSION%')
+                read -r ver
+                if [[ "$name" == "$pkgname" && -n "$ver" ]]; then
+                    best_ver=$(_consider_local_version "$best_ver" "$ver")
+                fi
+                name=""
+                ver=""
+                ;;
+        esac
+    done <<<"$desc"
+
+    [[ -n "$best_ver" ]] && echo "$best_ver"
+}
+
+# Compare on-disk .pkg.tar.zst versions with what tekne.db indexes.
+log_db_file_mismatches() {
+    local repo_out="${OUTPUT_REPO_DIR}"
+    local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
+    local f name file_ver db_ver cmp mismatches=0
+
+    [[ -f "$db_final" ]] || return 0
+
+    shopt -s nullglob
+    for f in "${repo_out}"/*.pkg.tar.zst; do
+        name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
+        file_ver=$(pacman -Qp "$f" 2>/dev/null | awk '{print $2}') || continue
+        db_ver=$(_get_db_package_version "$name" "$db_final")
+        if [[ -z "$db_ver" ]]; then
+            log_warn "DB out of sync: ${name} ${file_ver} on disk but missing from ${REPO_NAME}.db"
+            mismatches=$((mismatches + 1))
+            continue
+        fi
+        cmp=$(vercmp "$file_ver" "$db_ver" 2>/dev/null) || true
+        if [[ "$cmp" -ne 0 ]]; then
+            log_warn "DB out of sync: ${name} file=${file_ver} db=${db_ver}"
+            mismatches=$((mismatches + 1))
+        fi
+    done
+    shopt -u nullglob
+
+    if [[ $mismatches -gt 0 ]]; then
+        log_warn "Found $mismatches package(s) out of sync with ${REPO_NAME}.db; will rebuild database"
+    fi
+    return 0
+}
+
+verify_repo_db() {
+    local repo_out="${OUTPUT_REPO_DIR}"
+    local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
+    local f name file_ver db_ver cmp mismatches=0
+
+    shopt -s nullglob
+    for f in "${repo_out}"/*.pkg.tar.zst; do
+        name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
+        file_ver=$(pacman -Qp "$f" 2>/dev/null | awk '{print $2}') || continue
+        db_ver=$(_get_db_package_version "$name" "$db_final")
+        if [[ -z "$db_ver" ]]; then
+            log_error "DB verify failed: ${name} ${file_ver} on disk but not in ${REPO_NAME}.db"
+            mismatches=$((mismatches + 1))
+            continue
+        fi
+        cmp=$(vercmp "$file_ver" "$db_ver" 2>/dev/null) || true
+        if [[ "$cmp" -ne 0 ]]; then
+            log_error "DB verify failed: ${name} file=${file_ver} db=${db_ver}"
+            mismatches=$((mismatches + 1))
+        fi
+    done
+    shopt -u nullglob
+
+    if [[ $mismatches -gt 0 ]]; then
+        log_error "Repository database still out of sync with $mismatches package file(s)"
+        return 1
+    fi
+    return 0
+}
+
+prepare_repo_for_indexing() {
+    local repo_out="$1"
+    local f
+
+    shopt -s nullglob
+    for f in "${repo_out}"/*.pkg.tar.zst; do
+        chmod a+r "$f" 2>/dev/null || true
+        if [[ $EUID -eq 0 ]]; then
+            chown "$REPO_USER:$REPO_USER" "$f" 2>/dev/null || true
+        elif command -v sudo &>/dev/null; then
+            sudo chown "$REPO_USER:$REPO_USER" "$f" 2>/dev/null || true
+        fi
+    done
+    shopt -u nullglob
+}
+
+run_repo_add() {
+    local db_tmp="$1"
+    shift
+    local -a pkgs=("$@")
+
+    prepare_repo_for_indexing "${OUTPUT_REPO_DIR}"
+
+    if id "$REPO_USER" &>/dev/null && [[ "$(id -un)" != "$REPO_USER" ]]; then
+        sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}"
+    else
+        repo-add -v "$db_tmp" "${pkgs[@]}"
+    fi
+}
+
 update_repo_db() {
     local repo_out="${OUTPUT_REPO_DIR}"
     local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
@@ -288,7 +435,7 @@ update_repo_db() {
     # Never delete the live db until the new one is ready.
     rm -f -- "$db_tmp" "$files_tmp"
 
-    if ! sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+    if ! run_repo_add "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
         log_error "repo-add failed; existing ${REPO_NAME}.db left unchanged"
         rm -f -- "$db_tmp" "$files_tmp"
         return 1
@@ -310,6 +457,9 @@ update_repo_db() {
     ln -f -- "$files_final" "${repo_out}/${REPO_NAME}.files"
 
     log_info "Repository database rebuilt with ${#pkgs[@]} package file(s)"
+    if ! verify_repo_db; then
+        return 1
+    fi
 }
 
 #######################################
@@ -319,7 +469,11 @@ process_package() {
     local pkg="$1"
     log_info "========== Processing: $pkg =========="
 
-    clone_repo "$pkg" || return 1
+    if ! clone_repo "$pkg"; then
+        FAILED_PACKAGES+=("$pkg")
+        log_warn "Failed to clone $pkg (continuing...)"
+        return 0
+    fi
 
     if ! upstream_greater_than_local "$pkg"; then
         log_info "Skipping $pkg (repo version not newer than local)"
@@ -345,6 +499,7 @@ Only downloads/builds when upstream version > version in ${LOCAL_REPO_DIR}.
 
 Options:
   --force       Build all packages regardless of version (ignore version check)
+  --sync-db     Rebuild ${REPO_NAME}.db from on-disk .pkg.tar.zst files only (no builds)
   -h, --help    Show this help.
 
 Environment:
@@ -359,10 +514,12 @@ EOF
 
 main() {
     local force_build=0
+    local sync_db_only=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --force) force_build=1 ;;
+            --sync-db) sync_db_only=1 ;;
             -h | --help)
                 usage
                 exit 0
@@ -379,10 +536,20 @@ main() {
     mkdir -p "$LOG_DIR"
     acquire_repo_build_lock "$(basename "$0")"
     log_info "Starting AUR build for Tekne repo"
-    refresh_mirrorlist
     log_info "Local repo (version source): $LOCAL_REPO_DIR"
     log_info "Output repo: $OUTPUT_REPO_DIR"
+
+    if [[ $sync_db_only -eq 1 ]]; then
+        log_info "Mode: sync database only (no package builds)"
+        log_db_file_mismatches || true
+        update_repo_db
+        log_info "Database sync completed"
+        return 0
+    fi
+
+    refresh_mirrorlist
     log_info "Packages: ${#PACKAGES[@]}"
+    log_db_file_mismatches || true
 
     if ! command -v jq &>/dev/null; then
         log_error "jq is required. Install: pacman -S jq"
@@ -409,7 +576,10 @@ main() {
         fi
     done
 
-    update_repo_db
+    if ! update_repo_db; then
+        log_error "Failed to update ${REPO_NAME}.db; pacman clients may see stale package versions"
+        exit 1
+    fi
     log_info "Build process completed"
 }
 
