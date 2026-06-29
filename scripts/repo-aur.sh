@@ -310,11 +310,60 @@ _get_db_package_version() {
     [[ -n "$best_ver" ]] && echo "$best_ver"
 }
 
+_get_db_entry_version() {
+    local pkgfile="$1"
+    local db_file="$2"
+    local base desc
+
+    base=$(basename "$pkgfile" .pkg.tar.zst)
+    desc=$(tar -xOf "$db_file" "${base}/desc" 2>/dev/null) || return 1
+    _parse_desc_version "$desc"
+}
+
+# Remove older .pkg.tar.zst files when multiple versions share a pkgname.
+# repo-add only keeps one entry per pkgname; stale files cause false verify failures.
+prune_stale_packages() {
+    local repo_out="$1"
+    local f name ver cmp pruned=0
+    declare -A keep_file=()
+    declare -A keep_ver=()
+
+    shopt -s nullglob
+    for f in "${repo_out}"/*.pkg.tar.zst; do
+        name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
+        ver=$(pacman -Qp "$f" 2>/dev/null | awk '{print $2}') || continue
+        if [[ -z "${keep_ver[$name]:-}" ]]; then
+            keep_ver[$name]=$ver
+            keep_file[$name]=$f
+            continue
+        fi
+        cmp=$(vercmp "$ver" "${keep_ver[$name]}" 2>/dev/null) || continue
+        if [[ "$cmp" -gt 0 ]]; then
+            keep_ver[$name]=$ver
+            keep_file[$name]=$f
+        fi
+    done
+
+    for f in "${repo_out}"/*.pkg.tar.zst; do
+        name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
+        if [[ "$f" != "${keep_file[$name]}" ]]; then
+            log_info "Pruning stale package file: $(basename "$f")"
+            rm -f -- "$f"
+            pruned=$((pruned + 1))
+        fi
+    done
+    shopt -u nullglob
+
+    if [[ $pruned -gt 0 ]]; then
+        log_info "Pruned $pruned stale package file(s)"
+    fi
+}
+
 # Compare on-disk .pkg.tar.zst versions with what tekne.db indexes.
 log_db_file_mismatches() {
     local repo_out="${OUTPUT_REPO_DIR}"
     local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
-    local f name file_ver db_ver cmp mismatches=0
+    local f name file_ver db_ver latest mismatches=0
 
     [[ -f "$db_final" ]] || return 0
 
@@ -322,22 +371,26 @@ log_db_file_mismatches() {
     for f in "${repo_out}"/*.pkg.tar.zst; do
         name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
         file_ver=$(pacman -Qp "$f" 2>/dev/null | awk '{print $2}') || continue
-        db_ver=$(_get_db_package_version "$name" "$db_final")
-        if [[ -z "$db_ver" ]]; then
-            log_warn "DB out of sync: ${name} ${file_ver} on disk but missing from ${REPO_NAME}.db"
-            mismatches=$((mismatches + 1))
+        db_ver=$(_get_db_entry_version "$f" "$db_final")
+        if [[ -n "$db_ver" && "$file_ver" == "$db_ver" ]]; then
             continue
         fi
-        cmp=$(vercmp "$file_ver" "$db_ver" 2>/dev/null) || true
-        if [[ "$cmp" -ne 0 ]]; then
-            log_warn "DB out of sync: ${name} file=${file_ver} db=${db_ver}"
-            mismatches=$((mismatches + 1))
+        if [[ -z "$db_ver" ]]; then
+            latest=$(_get_db_package_version "$name" "$db_final")
+            if [[ -n "$latest" ]]; then
+                log_warn "Stale package file on disk (not indexed): $(basename "$f") (db has ${name} ${latest})"
+            else
+                log_warn "DB out of sync: ${name} ${file_ver} on disk but missing from ${REPO_NAME}.db"
+            fi
+        else
+            log_warn "DB out of sync: $(basename "$f") file=${file_ver} db=${db_ver}"
         fi
+        mismatches=$((mismatches + 1))
     done
     shopt -u nullglob
 
     if [[ $mismatches -gt 0 ]]; then
-        log_warn "Found $mismatches package(s) out of sync with ${REPO_NAME}.db; will rebuild database"
+        log_warn "Found $mismatches package file(s) out of sync with ${REPO_NAME}.db; will rebuild database"
     fi
     return 0
 }
@@ -345,24 +398,29 @@ log_db_file_mismatches() {
 verify_repo_db() {
     local repo_out="${OUTPUT_REPO_DIR}"
     local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
-    local f name file_ver db_ver cmp mismatches=0
+    local f file_ver db_ver entry mismatches=0
 
     shopt -s nullglob
     for f in "${repo_out}"/*.pkg.tar.zst; do
-        name=$(pacman -Qp "$f" 2>/dev/null | awk '{print $1}') || continue
         file_ver=$(pacman -Qp "$f" 2>/dev/null | awk '{print $2}') || continue
-        db_ver=$(_get_db_package_version "$name" "$db_final")
+        db_ver=$(_get_db_entry_version "$f" "$db_final")
         if [[ -z "$db_ver" ]]; then
-            log_error "DB verify failed: ${name} ${file_ver} on disk but not in ${REPO_NAME}.db"
+            log_error "DB verify failed: $(basename "$f") not indexed in ${REPO_NAME}.db"
             mismatches=$((mismatches + 1))
             continue
         fi
-        cmp=$(vercmp "$file_ver" "$db_ver" 2>/dev/null) || true
-        if [[ "$cmp" -ne 0 ]]; then
-            log_error "DB verify failed: ${name} file=${file_ver} db=${db_ver}"
+        if [[ "$file_ver" != "$db_ver" ]]; then
+            log_error "DB verify failed: $(basename "$f") file=${file_ver} db=${db_ver}"
             mismatches=$((mismatches + 1))
         fi
     done
+
+    while IFS= read -r entry; do
+        if [[ ! -f "${repo_out}/${entry}.pkg.tar.zst" ]]; then
+            log_error "DB verify failed: ${entry}.pkg.tar.zst indexed but missing on disk"
+            mismatches=$((mismatches + 1))
+        fi
+    done < <(tar -tzf "$db_final" 2>/dev/null | awk -F/ 'NF == 2 && $2 == "desc" { print $1 }')
     shopt -u nullglob
 
     if [[ $mismatches -gt 0 ]]; then
@@ -411,6 +469,7 @@ update_repo_db() {
 
     log_info "Updating repository database: ${REPO_NAME}.db"
     mkdir -p "$repo_out"
+    prune_stale_packages "$repo_out"
 
     shopt -s nullglob
     pkgs=("${repo_out}"/*.pkg.tar.zst)
