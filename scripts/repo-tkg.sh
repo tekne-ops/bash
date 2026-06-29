@@ -420,8 +420,7 @@ update_repo_db() {
     local repo_out="${OUTPUT_REPO_DIR}"
     local db_final="${repo_out}/${REPO_NAME}.db.tar.gz"
     local files_final="${repo_out}/${REPO_NAME}.files.tar.gz"
-    local db_tmp="${repo_out}/${REPO_NAME}.db.tar.gz.new"
-    local files_tmp="${repo_out}/${REPO_NAME}.files.tar.gz.new"
+    local stage_dir db_tmp files_tmp
     local -a pkgs=()
 
     log_info "Updating repository database: ${REPO_NAME}.db"
@@ -445,32 +444,45 @@ update_repo_db() {
     # with the same pkgver-pkgrel filename but different contents; -n would keep
     # the old DB entry (old checksums) and pacman will fail with "corrupted package".
     #
-    # Rebuild the db atomically: write to a temp filename, then move into place.
-    # Never delete the live db until the new one is ready.
-    rm -f -- "$db_tmp" "$files_tmp"
+    # Rebuild the db atomically in a staging dir. repo-add requires filenames to
+    # end in .db.tar.gz / .files.tar.gz exactly (.new suffix is rejected).
+    stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/${REPO_NAME}-db-staging.XXXXXX")
+    db_tmp="${stage_dir}/${REPO_NAME}.db.tar.gz"
+    files_tmp="${stage_dir}/${REPO_NAME}.files.tar.gz"
+    if id "$REPO_USER" &>/dev/null && [[ "$(id -un)" != "$REPO_USER" ]]; then
+        chown "$REPO_USER:$REPO_USER" "$stage_dir"
+    fi
 
-    if ! sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+    rm -f -- "${repo_out}/${REPO_NAME}.db.tar.gz.new" "${repo_out}/${REPO_NAME}.files.tar.gz.new"
+
+    if id "$REPO_USER" &>/dev/null && [[ "$(id -un)" != "$REPO_USER" ]]; then
+        if ! sudo -u "$REPO_USER" repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+            log_error "repo-add failed; existing ${REPO_NAME}.db left unchanged"
+            rm -rf -- "$stage_dir"
+            return 1
+        fi
+    elif ! repo-add -v "$db_tmp" "${pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
         log_error "repo-add failed; existing ${REPO_NAME}.db left unchanged"
-        rm -f -- "$db_tmp" "$files_tmp"
+        rm -rf -- "$stage_dir"
         return 1
     fi
 
-    [[ -f "$files_tmp" ]] || files_tmp="${db_tmp/.db.tar.gz.new/.files.tar.gz.new}"
     if [[ ! -f "$db_tmp" || ! -f "$files_tmp" ]]; then
         log_error "repo-add did not produce database files"
-        rm -f -- "$db_tmp" "$files_tmp"
+        rm -rf -- "$stage_dir"
         return 1
     fi
 
     mv -f -- "$db_tmp" "$db_final"
     mv -f -- "$files_tmp" "$files_final"
+    rm -rf -- "$stage_dir"
 
     # Hardlink aliases for HTTP clients (nginx often rejects symlinks for tekne.db).
     rm -f -- "${repo_out}/${REPO_NAME}.db" "${repo_out}/${REPO_NAME}.files"
     ln -f -- "$db_final" "${repo_out}/${REPO_NAME}.db"
     ln -f -- "$files_final" "${repo_out}/${REPO_NAME}.files"
 
-    log_info "Repository updated at: $repo_out"
+    log_info "Repository updated at: $repo_out (${#pkgs[@]} package file(s))"
 }
 
 #######################################
