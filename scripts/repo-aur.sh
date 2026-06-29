@@ -310,14 +310,40 @@ _get_db_package_version() {
     [[ -n "$best_ver" ]] && echo "$best_ver"
 }
 
+# repo-add names db directories {pkgname}-{pkgver}-{pkgrel} (no -x86_64/-any suffix).
+_pkgfile_db_entry() {
+    local pkgfile="$1"
+    local name ver
+
+    name=$(pacman -Qp "$pkgfile" 2>/dev/null | awk '{print $1}') || return 1
+    ver=$(pacman -Qp "$pkgfile" 2>/dev/null | awk '{print $2}') || return 1
+    echo "${name}-${ver}"
+}
+
+_get_db_entry_desc() {
+    local entry="$1"
+    local db_file="$2"
+
+    tar -xOf "$db_file" "${entry}/desc" 2>/dev/null
+}
+
 _get_db_entry_version() {
     local pkgfile="$1"
     local db_file="$2"
-    local base desc
+    local entry desc
 
-    base=$(basename "$pkgfile" .pkg.tar.zst)
-    desc=$(tar -xOf "$db_file" "${base}/desc" 2>/dev/null) || return 1
+    entry=$(_pkgfile_db_entry "$pkgfile") || return 1
+    desc=$(_get_db_entry_desc "$entry" "$db_file") || return 1
     _parse_desc_version "$desc"
+}
+
+_get_db_entry_filename() {
+    local entry="$1"
+    local db_file="$2"
+    local desc
+
+    desc=$(_get_db_entry_desc "$entry" "$db_file") || return 1
+    awk '$0 == "%FILENAME%" { getline; print; exit }' <<<"$desc"
 }
 
 # Remove older .pkg.tar.zst files when multiple versions share a pkgname.
@@ -416,8 +442,11 @@ verify_repo_db() {
     done
 
     while IFS= read -r entry; do
-        if [[ ! -f "${repo_out}/${entry}.pkg.tar.zst" ]]; then
-            log_error "DB verify failed: ${entry}.pkg.tar.zst indexed but missing on disk"
+        local db_filename filename
+        db_filename=$(_get_db_entry_filename "$entry" "$db_final") || continue
+        filename="${repo_out}/${db_filename}"
+        if [[ ! -f "$filename" ]]; then
+            log_error "DB verify failed: ${db_filename} indexed but missing on disk"
             mismatches=$((mismatches + 1))
         fi
     done < <(tar -tzf "$db_final" 2>/dev/null | awk -F/ 'NF == 2 && $2 == "desc" { print $1 }')
