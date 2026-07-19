@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
 DNS_SERVERS=(
-    "138.97.141.5"   # ISP DNS
-    "190.92.0.5"     # ISP DNS
-    "1.1.1.1"        # Cloudflare
+    "138.97.141.5" # ISP DNS
+    "190.92.0.5"   # ISP DNS
+    "1.1.1.1"      # Cloudflare
     "1.0.0.1"
-    "8.8.8.8"        # Google
+    "8.8.8.8" # Google
     "8.8.4.4"
-    "9.9.9.9"        # Quad9
+    "9.9.9.9" # Quad9
     "149.112.112.112"
     "208.67.222.222" # OpenDNS
     "208.67.220.220"
-    "94.140.14.14"   # AdGuard
+    "94.140.14.14" # AdGuard
     "94.140.15.15"
 )
 
@@ -31,9 +31,9 @@ for dns in "${DNS_SERVERS[@]}"; do
     total=0
     success=0
 
-    for ((i=1; i<=TEST_COUNT; i++)); do
-        query_time=$(dig @"$dns" "$TEST_DOMAIN" +stats +tries=1 +timeout=3 \
-            | awk '/Query time:/ {print $4}')
+    for ((i = 1; i <= TEST_COUNT; i++)); do
+        query_time=$(dig @"$dns" "$TEST_DOMAIN" +stats +tries=1 +timeout=3 |
+            awk '/Query time:/ {print $4}')
 
         if [[ "$query_time" =~ ^[0-9]+$ ]]; then
             echo "  Test ${i}: ${query_time} ms"
