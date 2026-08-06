@@ -163,21 +163,31 @@ place_window_in_cell() {
 }
 
 # --- URL resolution (optional) ---
-DEFAULT_URL="${EDGE_URL:-about:blank}"
-URL1="${EDGE_URL_1:-$DEFAULT_URL}"
-URL2="${EDGE_URL_2:-$DEFAULT_URL}"
-URL3="${EDGE_URL_3:-$DEFAULT_URL}"
+# When unset, omit the URL so Edge uses each profile's configured startup pages.
+# Set EDGE_URL (all) or EDGE_URL_N (per window) to force a specific page.
+URL1="${EDGE_URL_1:-${EDGE_URL:-}}"
+URL2="${EDGE_URL_2:-${EDGE_URL:-}}"
+URL3="${EDGE_URL_3:-${EDGE_URL:-}}"
+
+launch_edge() {
+    local class_pat="$1" profile="$2" url="${3:-}"
+    if [ -n "$url" ]; then
+        new_window_of_class "$class_pat" "$EDGE_BIN" --profile-directory="$profile" "$url"
+    else
+        new_window_of_class "$class_pat" "$EDGE_BIN" --profile-directory="$profile"
+    fi
+}
 
 # --- Launch / ensure windows ---
 echo "Launching 3x Microsoft Edge windows with explicit profiles..."
 # 1) Default profile (explicitly force the Default directory)
-EDGE_WID_1="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Default' "$URL1")"
+EDGE_WID_1="$(launch_edge 'microsoft-edge' 'Default' "$URL1")"
 
 # 2) Profile 1
-EDGE_WID_2="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 1' "$URL2")"
+EDGE_WID_2="$(launch_edge 'microsoft-edge' 'Profile 1' "$URL2")"
 
-# 3) Profile 2 (changed from Profile 3)
-EDGE_WID_3="$(new_window_of_class 'microsoft-edge' "$EDGE_BIN" --profile-directory='Profile 2' "$URL3")"
+# 3) Profile 2
+EDGE_WID_3="$(launch_edge 'microsoft-edge' 'Profile 2' "$URL3")"
 
 echo "Ensuring Thunar..."
 THUNAR_WID="$(ensure_window_of_class 'Thunar' "$THUNAR_BIN" "$HOME")"
