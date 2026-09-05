@@ -173,7 +173,8 @@ Name=eth*
 RequiredForOnline=routable
 
 [Network]
-DHCP=yes
+DHCP=ipv4
+IPv6AcceptRA=no
 EOF
 }
 
