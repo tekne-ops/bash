@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Benchmark DNS-over-TLS (DoT, RFC 7858) on port 853.
+# Requires BIND dig 9.18+ (this host has 9.20).
+
 DNS_SERVERS=(
     "138.97.141.5" # ISP DNS
     "190.92.0.5"   # ISP DNS
@@ -21,18 +24,18 @@ INTERVAL=10
 
 declare -a RESULTS
 
-echo "DNS Benchmark Starting..."
+echo "DoT Benchmark Starting (DNS-over-TLS, port 853)..."
 echo "Each server will be tested ${TEST_COUNT} times with ${INTERVAL}s between tests."
 echo
 
 for dns in "${DNS_SERVERS[@]}"; do
-    echo "Testing ${dns}..."
+    echo "Testing ${dns} (DoT)..."
 
     total=0
     success=0
 
     for ((i = 1; i <= TEST_COUNT; i++)); do
-        query_time=$(dig @"$dns" "$TEST_DOMAIN" +stats +tries=1 +timeout=3 |
+        query_time=$(dig +tls @"$dns" "$TEST_DOMAIN" +stats +tries=1 +timeout=5 |
             awk '/Query time:/ {print $4}')
 
         if [[ "$query_time" =~ ^[0-9]+$ ]]; then
@@ -62,7 +65,7 @@ done
 
 echo
 echo "=========================================="
-echo "Average Response Time Per DNS Server"
+echo "Average DoT Response Time Per DNS Server"
 echo "=========================================="
 
 printf '%s\n' "${RESULTS[@]}" | sort -n | while read -r avg dns; do
@@ -75,7 +78,7 @@ done
 
 echo
 echo "=========================================="
-echo "Top 3 Fastest DNS Servers"
+echo "Top 3 Fastest DoT Servers"
 echo "=========================================="
 
 printf '%s\n' "${RESULTS[@]}" | sort -n | grep -v "^99999" | head -3 | while read -r avg dns; do
