@@ -6,31 +6,31 @@ stage=$(mktemp -d)
 mkdir -p "$stage/Cursor/User/globalStorage" "$stage/cursor/projects"
 
 cp -a ~/.config/Cursor/User/settings.json \
-      ~/.config/Cursor/User/keybindings.json \
-      "$stage/Cursor/User/"
+    ~/.config/Cursor/User/keybindings.json \
+    "$stage/Cursor/User/"
 cp -a ~/.config/Cursor/User/snippets "$stage/Cursor/User/" 2>/dev/null || true
 
 cp -a ~/.config/Cursor/User/globalStorage/state.vscdb \
-      ~/.config/Cursor/User/globalStorage/state.vscdb-wal \
-      ~/.config/Cursor/User/globalStorage/state.vscdb-shm \
-      ~/.config/Cursor/User/globalStorage/conversation-search.db \
-      ~/.config/Cursor/User/globalStorage/conversation-search.db-wal \
-      ~/.config/Cursor/User/globalStorage/conversation-search.db-shm \
-      "$stage/Cursor/User/globalStorage/" 2>/dev/null || true
+    ~/.config/Cursor/User/globalStorage/state.vscdb-wal \
+    ~/.config/Cursor/User/globalStorage/state.vscdb-shm \
+    ~/.config/Cursor/User/globalStorage/conversation-search.db \
+    ~/.config/Cursor/User/globalStorage/conversation-search.db-wal \
+    ~/.config/Cursor/User/globalStorage/conversation-search.db-shm \
+    "$stage/Cursor/User/globalStorage/" 2>/dev/null || true
 
 rsync -a --include='*/' --include='state.vscdb' --include='state.vscdb-wal' --include='state.vscdb-shm' \
-      --exclude='*' \
-      ~/.config/Cursor/User/workspaceStorage/ \
-      "$stage/Cursor/User/workspaceStorage/"
+    --exclude='*' \
+    ~/.config/Cursor/User/workspaceStorage/ \
+    "$stage/Cursor/User/workspaceStorage/"
 
 rsync -a --include='*/' --include='agent-transcripts/***' --exclude='*' \
-      ~/.cursor/projects/ \
-      "$stage/cursor/projects/"
+    ~/.cursor/projects/ \
+    "$stage/cursor/projects/"
 
 cp -a ~/.cursor/rules ~/.cursor/argv.json "$stage/cursor/" 2>/dev/null || true
 cp -a ~/.cursor/agents ~/.cursor/plugins "$stage/cursor/" 2>/dev/null || true
 cp -a ~/.config/onedrive/config ~/.config/onedrive/sync_list "$stage/"
-cursor --list-extensions > "$stage/cursor/extensions.txt" 2>/dev/null || true
+cursor --list-extensions >"$stage/cursor/extensions.txt" 2>/dev/null || true
 
 tar -C "$stage" -cf - . | zstd -q -o "/srv/OneDrive/Documents/Backups/cursor/cursor-profile-$stamp.tar.zst"
 rm -rf "$stage"
