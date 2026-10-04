@@ -4,7 +4,7 @@ pgrep -af /usr/share/cursor && {
     echo "Quit Cursor first"
     exit 1
 }
-archive=$(ls -1t /srv/OneDrive/Documents/Backups/cursor/cursor-profile-*.tar.zst | head -1)
+archive=$(find /srv/OneDrive/Documents/Backups/cursor -maxdepth 1 -name 'cursor-profile-*.tar.zst' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
 stage=$(mktemp -d)
 tar -C "$stage" -I zstd -xf "$archive"
 mkdir -p ~/.config/Cursor/User ~/.cursor
