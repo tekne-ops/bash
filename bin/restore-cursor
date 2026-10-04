@@ -1,0 +1,11 @@
+#!/bin/bash
+
+pgrep -af /usr/share/cursor && { echo "Quit Cursor first"; exit 1; }
+archive=$(ls -1t /srv/OneDrive/Documents/Backups/cursor/cursor-profile-*.tar.zst | head -1)
+stage=$(mktemp -d)
+tar -C "$stage" -I zstd -xf "$archive"
+mkdir -p ~/.config/Cursor/User ~/.cursor
+cp -a "$stage/Cursor/User/." ~/.config/Cursor/User/
+cp -a "$stage/cursor/." ~/.cursor/
+rm -rf "$stage"
+echo "Restored $archive"

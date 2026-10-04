@@ -1,3 +1,5 @@
+#!/bin/bash
+
 install -d -m 700 /srv/OneDrive/Documents/Backups/cursor
 stamp=$(date +%F)
 stage=$(mktemp -d)
