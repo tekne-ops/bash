@@ -1,6 +1,6 @@
 #!/bin/bash
 
-install -d -m 700 /srv/OneDrive/Documents/Backups/cursor
+install -d -m 700 /srv/OneDrive/Archive/cursor
 stamp=$(date +%F)
 stage=$(mktemp -d)
 mkdir -p "$stage/Cursor/User/globalStorage" "$stage/cursor/projects"
@@ -32,6 +32,6 @@ cp -a ~/.cursor/agents ~/.cursor/plugins "$stage/cursor/" 2>/dev/null || true
 cp -a ~/.config/onedrive/config ~/.config/onedrive/sync_list "$stage/"
 cursor --list-extensions >"$stage/cursor/extensions.txt" 2>/dev/null || true
 
-tar -C "$stage" -cf - . | zstd -q -o "/srv/OneDrive/Documents/Backups/cursor/cursor-profile-$stamp.tar.zst"
+tar -C "$stage" -cf - . | zstd -q -o "/srv/OneDrive/Archive/cursor/cursor-profile-$stamp.tar.zst"
 rm -rf "$stage"
-find /srv/OneDrive/Documents/Backups/cursor -name 'cursor-profile-*.tar.zst' -mtime +90 -delete
+find /srv/OneDrive/Archive/cursor -name 'cursor-profile-*.tar.zst' -mtime +90 -delete
