@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if pgrep -f /usr/share/cursor >/dev/null; then
+    pkill -TERM -f /usr/share/cursor
+    sleep 5
+fi
+
 install -d -m 700 /srv/OneDrive/Archive/cursor
 stamp=$(date +%F)
 stage=$(mktemp -d)
