@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 pgrep -af /usr/share/cursor && {
     echo "Quit Cursor first"
@@ -6,9 +7,10 @@ pgrep -af /usr/share/cursor && {
 }
 archive=$(find /srv/OneDrive/Archive/cursor -maxdepth 1 -name 'cursor-profile-*.tar.zst' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
 stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT
 tar -C "$stage" -I zstd -xf "$archive"
 mkdir -p ~/.config/Cursor/User ~/.cursor
-cp -a "$stage/Cursor/User/." ~/.config/Cursor/User/
-cp -a "$stage/cursor/." ~/.cursor/
-rm -rf "$stage"
+# Git pack files are mode 0444. cp cannot overwrite them in place.
+cp -a --remove-destination "$stage/Cursor/User/." ~/.config/Cursor/User/
+cp -a --remove-destination "$stage/cursor/." ~/.cursor/
 echo "Restored $archive"
