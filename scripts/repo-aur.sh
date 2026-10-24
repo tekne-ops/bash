@@ -27,9 +27,9 @@ declare -a PACKAGES=(
     'onedrive-abraunegg' 'google-chrome' 'microsoft-edge-stable-bin' 'blesh-git'
     'ocs-url' 'schedtoold' 'zoom' 'ventoy-bin' 'visual-studio-code-bin'
     'proton-ge-custom-bin' 'teams-for-linux-bin' 'sound-theme-smooth'
-    'bitwarden-bin' 'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin' 
-    'flat-remix' 'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto' 
-    'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 'python311' 
+    'bitwarden-bin' 'pikaur' 'yubico-authenticator-bin' 'bibata-cursor-theme-bin'
+    'flat-remix' 'kora-icon-theme' 'httpfs2-2gbplus' 'ttf-ms-win10-auto'
+    'crossover' 'deezer' 'cursor-bin' 'omnissa-horizon-client' 'python311'
     'edk2-ovmf-fedora'
 )
 
