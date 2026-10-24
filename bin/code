@@ -10,7 +10,9 @@
 #   repos.sh push -m "msg"       # Push with commit (stages all, commits, pushes)
 #   repos.sh -d /path/to/repos status
 #
-# PAT: Set GH_PAT for push/pull. The script sets origin URL to use it:
+# PAT: Set GH_PAT for push/pull, or embed one in the origin URL.
+# GitHub redirects strip a token from the URL, so the script passes it
+# through a credential helper and ignores the gh helper for that command.
 #   export GH_PAT='github_pat_...'
 #   ./repos.sh pull
 #
@@ -38,7 +40,8 @@ Options:
 
 Environment:
   GH_PAT    GitHub Personal Access Token for push/pull authentication.
-            When set, origin URL is temporarily updated to use the PAT.
+            When set, it is used instead of a token embedded in the origin URL
+            and instead of the gh credential helper.
 
 Examples:
   export GH_PAT='github_pat_...'
@@ -116,42 +119,50 @@ find_repos() {
     done
 }
 
-# Extract owner/repo from various GitHub URL forms
-# Handles: https://github.com/o/r, https://user@github.com/o/r, https://user:token@github.com/o/r
-get_github_repo_path() {
+# Token embedded in an https origin URL: https://TOKEN@host or https://user:TOKEN@host
+origin_token() {
     local url="$1"
-    if [[ "$url" =~ github\.com[:/]([^/]+/[^/]+\.git|[^/]+/[^/]+) ]]; then
-        echo "${BASH_REMATCH[1]}"
+    local userinfo
+    if [[ "$url" =~ ^https://([^/@]+)@ ]]; then
+        userinfo="${BASH_REMATCH[1]}"
+        if [[ "$userinfo" == *:* ]]; then
+            printf '%s\n' "${userinfo#*:}"
+        else
+            printf '%s\n' "$userinfo"
+        fi
         return 0
     fi
     return 1
 }
 
-# Inject PAT into origin URL for the duration of a git command
+# Use GH_PAT, or a token already stored in origin, for this git command.
+# A URL token is dropped when Git follows GitHub's redirect, and the gh
+# credential helper would then authenticate as a different account.
 run_with_pat() {
     local repo_dir="$1"
     shift
     local cmd=("$@")
+    local origin_url token
 
-    if [[ -n "${GH_PAT:-}" ]]; then
+    origin_url="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+    token="${GH_PAT:-}"
+    if [[ -z "$token" ]]; then
+        token="$(origin_token "$origin_url" || true)"
+    fi
+
+    if [[ -n "$token" ]]; then
         (
             cd "$repo_dir"
-            origin_url="$(git remote get-url origin 2>/dev/null || true)"
-            repo_path="$(get_github_repo_path "$origin_url" 2>/dev/null || true)"
-            if [[ -n "$repo_path" ]]; then
-                pat_url="https://${GH_PAT}@github.com/${repo_path}"
-                git remote set-url origin "$pat_url"
-                if "${cmd[@]}"; then
-                    :
-                else
-                    rc=$?
-                    git remote set-url origin "$origin_url"
-                    exit $rc
-                fi
-                git remote set-url origin "$origin_url"
-            else
-                "${cmd[@]}"
-            fi
+            export GH_PUSH_TOKEN="$token"
+            # Config is passed in the environment so "git push" is not run as "git git push".
+            # $GH_PUSH_TOKEN must stay literal here; the helper expands it when git runs.
+            export GIT_CONFIG_COUNT=2
+            export GIT_CONFIG_KEY_0=credential.helper
+            export GIT_CONFIG_VALUE_0=
+            export GIT_CONFIG_KEY_1=credential.https://github.com.helper
+            # shellcheck disable=SC2016
+            export GIT_CONFIG_VALUE_1='!f() { echo username=x-access-token; echo "password=$GH_PUSH_TOKEN"; }; f'
+            "${cmd[@]}"
         )
     else
         (cd "$repo_dir" && "${cmd[@]}")
