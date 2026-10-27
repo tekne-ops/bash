@@ -85,17 +85,53 @@ if ! [[ "$MON_W" =~ ^[0-9]+$ && "$MON_H" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
+# --- Clip to the WM's usable work area (excludes panel/dock struts) ---
+# xrandr reports the monitor's full raw rectangle. If a panel reserves space
+# on this monitor, xfwm4 will shove any window that collides with the strut
+# back inside the real work area, leaving a gap between it and the windows
+# that didn't collide. Intersecting with _NET_WORKAREA up front avoids that.
+read -r WA_X WA_Y WA_W WA_H < <(
+    wmctrl -d | awk '
+        $2 == "*" {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "WA:") {
+                    split($(i + 1), xy, ",")
+                    split($(i + 2), wh, "x")
+                    print xy[1], xy[2], wh[1], wh[2]
+                    exit
+                }
+            }
+        }
+    '
+)
+if [[ "${WA_W:-}" =~ ^[0-9]+$ && "${WA_H:-}" =~ ^[0-9]+$ ]]; then
+    clip_x=$((MON_X > WA_X ? MON_X : WA_X))
+    clip_y=$((MON_Y > WA_Y ? MON_Y : WA_Y))
+    mon_right=$((MON_X + MON_W))
+    wa_right=$((WA_X + WA_W))
+    mon_bottom=$((MON_Y + MON_H))
+    wa_bottom=$((WA_Y + WA_H))
+    clip_right=$((mon_right < wa_right ? mon_right : wa_right))
+    clip_bottom=$((mon_bottom < wa_bottom ? mon_bottom : wa_bottom))
+    if ((clip_right > clip_x && clip_bottom > clip_y)); then
+        MON_X=$clip_x
+        MON_Y=$clip_y
+        MON_W=$((clip_right - clip_x))
+        MON_H=$((clip_bottom - clip_y))
+    fi
+fi
+
 GAP=${GAP:-0}
 CELL_W=$(((MON_W - 2 * GAP) / 3))
 CELL_H=$(((MON_H - GAP) / 2))
 
 cell_x() {
     local col="$1"
-    echo $((MON_X + col * CELL_W + (col > 0 ? GAP : 0)))
+    echo $((MON_X + col * (CELL_W + GAP)))
 }
 cell_y() {
     local row="$1"
-    echo $((MON_Y + row * CELL_H + (row > 0 ? GAP : 0)))
+    echo $((MON_Y + row * (CELL_H + GAP)))
 }
 
 # --- Window helpers ---
