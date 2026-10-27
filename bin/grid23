@@ -189,13 +189,30 @@ ensure_window_of_class() {
     new_window_of_class "$class_pat" "$@"
 }
 
+# left right top bottom. CSD windows (Edge, Cursor) report the shadow as
+# _GTK_FRAME_EXTENTS. xfwm4 keeps that margin inside the rectangle we set, so
+# on a scaled panel the shadows become a visible gap. Overlap them.
+gtk_frame_extents() {
+    local wid="$1"
+    local line
+    line="$(xprop -id "$wid" -notype _GTK_FRAME_EXTENTS 2>/dev/null || true)"
+    if [[ "$line" =~ =\ ([0-9]+),\ ([0-9]+),\ ([0-9]+),\ ([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}"
+        return 0
+    fi
+    echo "0 0 0 0"
+}
+
 place_window_in_cell() {
     local wid="$1" col="$2" row="$3"
-    local x y
+    local x y left right top bottom
     x="$(cell_x "$col")"
     y="$(cell_y "$row")"
+    read -r left right top bottom < <(gtk_frame_extents "$wid")
+    x=$((x - left))
+    y=$((y - top))
     wmctrl -ir "$wid" -b remove,maximized_vert,maximized_horz,fullscreen || true
-    wmctrl -ir "$wid" -e "0,$x,$y,$CELL_W,$CELL_H"
+    wmctrl -ir "$wid" -e "0,$x,$y,$((CELL_W + left + right)),$((CELL_H + top + bottom))"
 }
 
 # --- URL resolution (optional) ---
@@ -241,17 +258,25 @@ if [ -n "${CURSOR_BIN:-}" ]; then
 fi
 
 # --- Arrange (2 rows x 3 cols) ---
-# Top row: Edge | Edge | Edge
-place_window_in_cell "$EDGE_WID_1" 0 0
-place_window_in_cell "$EDGE_WID_2" 1 0
-place_window_in_cell "$EDGE_WID_3" 2 0
+# Second pass: Edge/Cursor restore their saved size and publish frame
+# extents only after the first configure. Always measure from the cell,
+# so the second pass does not stack the overlap.
+arrange_grid() {
+    # Top row: Edge | Edge | Edge
+    place_window_in_cell "$EDGE_WID_1" 0 0
+    place_window_in_cell "$EDGE_WID_2" 1 0
+    place_window_in_cell "$EDGE_WID_3" 2 0
 
-# Bottom row: Thunar | Terminal | Cursor
-place_window_in_cell "$THUNAR_WID" 0 1
-place_window_in_cell "$TERM_WID" 1 1
-if [ -n "$CURSOR_WID" ]; then
-    place_window_in_cell "$CURSOR_WID" 2 1
-fi
+    # Bottom row: Thunar | Terminal | Cursor
+    place_window_in_cell "$THUNAR_WID" 0 1
+    place_window_in_cell "$TERM_WID" 1 1
+    if [ -n "$CURSOR_WID" ]; then
+        place_window_in_cell "$CURSOR_WID" 2 1
+    fi
+}
+arrange_grid
+sleep 0.5
+arrange_grid
 
 xdotool windowactivate "$EDGE_WID_1" >/dev/null 2>&1 || true
 echo "Done. Tiled on ${MON_W}x${MON_H}+${MON_X}+${MON_Y}."
